@@ -22,7 +22,7 @@ Three pieces, all under `~/.claude/deep-research/`:
 
 - **`configuration.json`** - tracks onboarding status + which components are confirmed/installed/keyed. **No secrets** live here. The gate-check reads it instead of probing the whole machine.
 - **`.env`** - where the user's API keys are written (gitignored, never packaged). `engine_common.sh` sources it, but **OS environment variables win** if already set - so this never overrides a key the user already exported.
-- **`_dependencies/`** (inside the skill) - bundled MCP source + the `exa-search` skill + cross-platform installers.
+- **`_dependencies/`** (inside the skill) - cross-platform installers only. Nothing is bundled/vendored: `exa-search` is `git clone`d from its own GitHub repo, `paper-search-mcp` comes from PyPI, and `perplexity-server` is cloned fresh from its upstream author (kept out-of-tree because it's GPL-3.0, a different license than this skill's). See `_dependencies/INSTALL.md` for the full source/license table.
 
 The flow **presents a required baseline** (the minimum that makes deep research effective) and walks the user through it - but the gate **never hard-blocks**: a user who just wants to research is routed with whatever's available, and only a *critical* lane missing its engines triggers a degraded-output callout. "Required" is firm guidance, not a wall.
 
@@ -83,17 +83,17 @@ Always persist progress via `dr_config.sh` as you go, so a half-finished setup r
 
 Recommend these to everyone first. Three of the four are free with no key.
 
-| Component | Type | Key needed | Free tier | Get it |
+| Component | Type | Key needed | Free tier | Where it comes from |
 |---|---|---|---|---|
 | **deep-research** | skill | - | - | already installed (this skill) |
-| **exa-search** | skill | `EXA_API_KEY` | 1,000 credits/mo | installer copies it; key at https://dashboard.exa.ai/api-keys |
-| **perplexity-server** | MCP | none | $0, effectively unlimited (browser automation) | installer builds it (Bun) |
-| **paper-search** | MCP | none | $0 (21 academic sources) | installer installs it (pip) |
-| **Firecrawl** | MCP | `FIRECRAWL_API_KEY` | 1,000 pages/mo, 2 concurrent | key at https://www.firecrawl.dev/app/api-keys |
+| **exa-search** | skill | `EXA_API_KEY` | 1,000 credits/mo | installer clones it live from [`github.com/Huntehhh/exa-search`](https://github.com/Huntehhh/exa-search); key at https://dashboard.exa.ai/api-keys |
+| **perplexity-server** | MCP | none | $0, effectively unlimited (browser automation) | installer clones it fresh from its upstream author, [`wysh3/perplexity-mcp-zerver`](https://github.com/wysh3/perplexity-mcp-zerver) (GPL-3.0-or-later — a different license than this skill's, which is why it's never bundled into this repo), then builds it (Bun) |
+| **paper-search** | MCP | none | $0 (21 academic sources) | installer installs it from PyPI (MIT license) |
+| **Firecrawl** | MCP | `FIRECRAWL_API_KEY` | 1,000 pages/mo, 2 concurrent | hosted by Firecrawl; key at https://www.firecrawl.dev/app/api-keys |
 
 Framing to use with the user:
 - **exa-search** is a lightweight superset of the Exa MCP (curl + jq, no server) - it can replace the Exa MCP and adds deep-search, crawl, company/people, code-context, and find-similar. If they only want one general-web key, **Exa** is the one to get. **Tavily** (https://app.tavily.com, 1,000 credits/mo) is the budget alternative.
-- **perplexity-server** drives the free Perplexity web UI via browser automation - **no API key, unlimited**. If they already run a Perplexity MCP, ours still installs cleanly alongside.
+- **perplexity-server** drives the free Perplexity web UI via browser automation - **no API key, unlimited**. Worth saying plainly: this is not an officially sanctioned Perplexity integration, and its own license (GPL-3.0) is why it's fetched fresh at install time instead of shipped inside this skill. If they already run a Perplexity MCP, ours still installs cleanly alongside.
 - **Firecrawl** is the preferred page-extraction engine (faster than any browser-driver). The free tier is generous; when it runs out the skill silently falls back and tells them at the end.
 
 ---
@@ -203,16 +203,16 @@ The free components install with one command. Run the bundled installer:
 - **macOS / Linux:** `bash _dependencies/install.sh`
 - **Windows:** `powershell -ExecutionPolicy Bypass -File _dependencies/install.ps1`
 
-It is idempotent (skips what's already present) and prints every command it runs. What it does:
+It is idempotent (skips what's already present) and prints every command it runs. Nothing is vendored — every fetch happens live, so re-running it later gets whatever's current upstream, not a stale snapshot. What it does:
 
-1. Copies `_dependencies/skills/exa-search/` -> `~/.claude/skills/exa-search/` (skip if present).
-2. `python -m pip install ./_dependencies/MCPs/paper-search-mcp` (PyPI `paper-search-mcp` as fallback).
-3. `cd _dependencies/MCPs/perplexity-server && bun install && bun run build`.
+1. `git clone`s `exa-search` from `github.com/Huntehhh/exa-search` -> `~/.claude/skills/exa-search/` (skip if present).
+2. `python -m pip install paper-search-mcp` (PyPI, MIT license).
+3. `git clone`s `perplexity-mcp-zerver` from its upstream author (`github.com/wysh3/perplexity-mcp-zerver`, GPL-3.0-or-later) into `~/.claude/deep-research/vendor/`, then `bun install && bun run build`.
 4. Registers MCPs at **user scope** so they work in every project:
    - `claude mcp add --scope user paper-search -- python -m paper_search_mcp.server`
-   - `claude mcp add --scope user perplexity-server -- bun <abs-path>/build/main.js`
+   - `claude mcp add --scope user perplexity-server -- bun <vendor-path>/build/main.js`
    - Firecrawl (after the user has a key): `claude mcp add --transport http --scope user firecrawl https://mcp.firecrawl.dev/<FIRECRAWL_API_KEY>/v2/mcp`
-5. Checks for Bun / Python 3.10+ / the `claude` CLI and prints install hints rather than failing silently.
+5. Checks for `git` / Bun / Python 3.10+ / the `claude` CLI and prints install hints rather than failing silently.
 
 Note for the user: `python -m pip` is the ASR-safe / cross-platform invocation. On Windows, the two stdio MCPs call `python`/`bun` directly (no `cmd /c` wrapper needed); only `npx`/`uvx`-based servers need that.
 

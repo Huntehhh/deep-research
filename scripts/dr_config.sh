@@ -235,6 +235,43 @@ cmd_set_key() {
   echo "wrote $name to $DR_ENV (chmod 600); marked present in $DR_CONFIG"
 }
 
+cmd_check_failures() {
+  # Critical-path engines per references/routing.md#api-failure-alerting.
+  local since="" arg
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --since) since="${2:-}"; shift 2 ;;
+      --since=*) since="${1#--since=}"; shift ;;
+      *) die "usage: $0 check-failures [--since ISO8601]" ;;
+    esac
+  done
+  # Default window: last 4 hours, if no explicit --since given.
+  if [ -z "$since" ]; then
+    since="$(date -u -d '4 hours ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-4H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "1970-01-01T00:00:00Z")"
+  fi
+
+  local logfile="${DR_FAILURE_LOG_DIR:-$HOME/.claude/deep-research-logs}/api-failures.jsonl"
+  if [ ! -f "$logfile" ]; then
+    echo "check-failures: no failure log yet ($logfile) -- nothing has failed. OK."
+    return 0
+  fi
+
+  local critical_engines='["pdl","explorium","github_repo_people","theirstack","lusha","paper-search","pubmed","brave_search","perplexity-server","openrouter"]'
+  local hits
+  hits="$(jq -c --arg since "$since" --argjson crit "$critical_engines" \
+    'select(.ts >= $since) | select(.engine as $e | $crit | index($e) != null)' \
+    "$logfile" 2>/dev/null)"
+
+  if [ -z "$hits" ]; then
+    echo "check-failures: OK -- no critical-path engine failures since $since."
+    return 0
+  fi
+
+  echo "check-failures: CRITICAL-PATH FAILURE(S) since $since -- surface the degraded-output callout." >&2
+  printf '%s\n' "$hits" >&2
+  return 1
+}
+
 cmd_set() {
   [ "${1:-}" ] || die "usage: $0 set <dotted.path> <value>"
   [ -f "$DR_CONFIG" ] || cmd_init >/dev/null
@@ -259,6 +296,7 @@ case "$sub" in
   select-categories)  cmd_select_categories "$@" ;;
   set-key)            cmd_set_key "$@" ;;
   set)                cmd_set "$@" ;;
+  check-failures)     cmd_check_failures "$@" ;;
   ''|-h|--help|help)
     cat <<'EOF'
 dr_config.sh -- deep-research onboarding/state helper
@@ -283,6 +321,13 @@ Usage:
 
   dr_config.sh set <dotted.path> <value>
       Generic setter for onboarding.* fields (e.g. onboarding.status complete).
+
+  dr_config.sh check-failures [--since ISO8601]
+      Read ~/.claude/deep-research-logs/api-failures.jsonl for critical-path
+      engine failures since the given time (default: last 4 hours). Exit 0
+      and print OK if none found; exit 1 and print the hits otherwise. Run
+      this before finalizing output -- see SKILL.md "What's code-enforced
+      vs. protocol-enforced".
 
 State lives under ~/.claude/deep-research/. Override the location with DR_HOME.
 EOF

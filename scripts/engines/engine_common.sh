@@ -45,16 +45,10 @@ fi
 # --- end deep-research .env ---
 
 # --- jq PATH bootstrap (Windows / non-standard installs) ---
-# If jq isn't on PATH, try DR_JQ_PATH env var, then the known Windows location.
-if ! command -v jq >/dev/null 2>&1; then
-  _jq_candidate="${DR_JQ_PATH:-}"
-  if [ -z "$_jq_candidate" ] && [ -d "/s/LIBRARIES/jq" ]; then
-    _jq_candidate="/s/LIBRARIES/jq"
-  fi
-  if [ -n "$_jq_candidate" ]; then
-    export PATH="$_jq_candidate:$PATH"
-  fi
-  unset _jq_candidate
+# If jq isn't on PATH, honor DR_JQ_PATH (directory containing jq) so a
+# non-standard install location doesn't require editing this script.
+if ! command -v jq >/dev/null 2>&1 && [ -n "${DR_JQ_PATH:-}" ]; then
+  export PATH="$DR_JQ_PATH:$PATH"
 fi
 # --- end jq PATH bootstrap ---
 

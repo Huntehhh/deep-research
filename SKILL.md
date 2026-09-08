@@ -1,7 +1,7 @@
 ---
 name: deep-research
 description: >
-  Research any topic via an intent-routed multi-engine search backend - solo mode for quick lookups, team mode for comprehensive adversarial reports. Routes each query by intent: general web, B2B/people/company, clinical/medical, academic papers (paper-search MCP, 21 sources), $0 multi-step research (perplexity-server MCP), and heavy URL extraction (Firecrawl MCP + fallbacks). Multi-round search with anti-overlap round 2, automatic backup-key fallover, and critical-path failure alerting. Solo: 3-15 queries. Team: 6-12 adversarial agents across 3 waves. Auto-detects mode + intent. Run via sub-agent to protect the main context window; incidental mid-task lookups (checking a version, confirming syntax) need only a single search tool call, not this skill. Chains: exa-search, nano-banana-pro, agent-teams. Triggers on (non-exhaustive): "research this", "search the web", "compare options", "find alternatives to", "deep dive on", "deep research", "research team", "who is [person]", "find the team behind", "find papers on", "clinical evidence for", "find phone for", "build vs buy", "audience research", "investigate", "comprehensive research".
+  Research any topic via an intent-routed multi-engine search backend - solo mode for quick lookups, team mode for comprehensive adversarial reports. Routes each query by intent: general web, B2B/people/company, clinical/medical, academic papers (paper-search MCP, 21 sources), $0 multi-step research (perplexity-server MCP), and heavy URL extraction (Firecrawl MCP + fallbacks). Automatic backup-key fallover is code-enforced (engine_common.sh); multi-round search (round-2 anti-overlap) and critical-path failure alerting are protocols the orchestrating agent follows, with a `dr_config.sh check-failures` command to verify at the end of a run rather than trusting memory alone. Solo: 3-15 queries. Team: 6-12 adversarial agents across 3 waves. Auto-detects mode + intent. Run via sub-agent to protect the main context window; incidental mid-task lookups (checking a version, confirming syntax) need only a single search tool call, not this skill. Chains: exa-search, nano-banana-pro, agent-teams. Triggers on (non-exhaustive): "research this", "search the web", "compare options", "find alternatives to", "deep dive on", "deep research", "research team", "who is [person]", "find the team behind", "find papers on", "clinical evidence for", "find phone for", "build vs buy", "audience research", "investigate", "comprehensive research".
 ---
 
 # Deep Research
@@ -44,6 +44,8 @@ Wrappers: `bash scripts/engines/<name>.sh "<args>"` (keys read from env, primary
 3. **Alert on critical-path failure.** B2B / phone / clinical-evidence / privacy / multi-step lanes must surface a degraded-output callout when their engines fail — never silently downgrade. General/news/extraction lanes fall over silently. See [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting).
 
 **PHI safety rule:** for clinical queries, send only the anonymized term (drug/condition/biomarker) to external APIs. Patient identifiers never cross the wire.
+
+**Before finalizing any output (solo or team), run `bash scripts/dr_config.sh check-failures`.** It reads the wrappers' own failure log and tells you whether a critical-path engine failed during this run — a real backstop against forgetting to surface a degraded-output callout, not just a reminder to remember. Non-zero exit = at least one critical-path failure; prepend the callout from [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting) before answering.
 
 ---
 
@@ -313,7 +315,7 @@ research/[topic-slug]/
 
 ## Prerequisites
 
-First-time setup is guided — run the onboarding (see [First-run setup check](#first-run-setup-check-gate) + [references/onboarding.md](references/onboarding.md)). Bundled dependency snapshots + cross-platform installers live in `_dependencies/` (`install.sh` / `install.ps1`).
+First-time setup is guided — run the onboarding (see [First-run setup check](#first-run-setup-check-gate) + [references/onboarding.md](references/onboarding.md)). Cross-platform installers live in `_dependencies/` (`install.sh` / `install.ps1`); they fetch every dependency live at install time — nothing is vendored into this repo. See `_dependencies/INSTALL.md` for exactly what comes from where and under what license.
 
 Required / recommended skills + MCPs:
 - `exa-search` skill — semantic/neural backend (Solo + Team). A lightweight superset of the Exa MCP (curl + jq, no server).
@@ -334,6 +336,18 @@ Keys are read from the OS environment, OR from `~/.claude/deep-research/.env` (s
 **By design never present:** `PERPLEXITY_API_KEY` (use perplexity-server MCP, OpenRouter fallback), `APOLLO_API_KEY`, `HUNTER_IO_API_KEY`.
 
 Missing a key? The wrapper logs `DR_FAILURE: ... reason=no-key` and the router falls over per [references/routing.md](references/routing.md).
+
+---
+
+## What's code-enforced vs. protocol-enforced
+
+Being precise about this matters more than it costs to admit it:
+
+- **Backup-key fallover is real code.** `scripts/engines/engine_common.sh` (`dr_run_with_fallover`) tries the primary key, detects 401/402/403/429/5xx or a quota-language body match, and retries with the `_BACKUP` key automatically. Every engine wrapper calls it. This one you can trust unconditionally.
+- **Round-2 anti-overlap is a protocol the orchestrating agent runs**, not a script. `references/routing.md` specifies the exact prompt injection, but nothing outside the agent's own diligence carries the round-1 URL list forward. If a context-compacted or distracted turn skips it, round 2 just repeats round 1 — there's no guard against that today.
+- **Critical-path failure alerting has a real signal and a real gap.** Every failed engine call is logged to `~/.claude/deep-research-logs/api-failures.jsonl` by code (`dr_log_failure`). Whether that failure actually reaches the user as a degraded-output callout used to depend entirely on the orchestrating agent remembering to check. `scripts/dr_config.sh check-failures` closes most of that gap — run it before finalizing and treat a non-zero exit as a hard stop, not a suggestion.
+
+If you're extending this skill: don't add a claim to the frontmatter description that only the orchestrating agent's good behavior makes true. Say what's code and what's convention.
 
 ---
 

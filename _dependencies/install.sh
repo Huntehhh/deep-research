@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# install.sh -- bootstraps the deep-research skill's bundled dependencies.
+# install.sh -- bootstraps the deep-research skill's dependencies.
 # Idempotent: safe to re-run. Skips anything already in place.
 # Cross-platform: macOS (bash 3.2+), Linux, Windows Git-Bash / WSL.
+#
+# Nothing here is vendored into this repo. Every dependency is fetched live
+# from its own source at install time -- one companion skill from Hunter's
+# GitHub, one package from PyPI, one MCP server cloned from its upstream
+# author. See references/onboarding.md for what each one does and why.
 set -euo pipefail
 export LC_ALL=C
 
 # --- resolve paths -----------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DEPS_DIR="$SCRIPT_DIR"
 HOME_SKILLS="$HOME/.claude/skills"
+DR_HOME="${DR_HOME:-$HOME/.claude/deep-research}"
+VENDOR_DIR="$DR_HOME/vendor"
+
+EXA_SEARCH_REPO="https://github.com/Huntehhh/exa-search.git"
+PERPLEXITY_SERVER_REPO="https://github.com/wysh3/perplexity-mcp-zerver.git"
 
 echo "deep-research installer"
 echo "  SCRIPT_DIR: $SCRIPT_DIR"
@@ -29,6 +38,15 @@ note_needs_key() { NEEDS_KEY="$NEEDS_KEY  - $1\n"; }
 
 # --- prereq detection (informational, never fatal) --------------------------
 echo "[1/6] checking prerequisites"
+
+HAS_GIT=0
+if command -v git >/dev/null 2>&1; then
+  HAS_GIT=1
+  echo "  git: $(git --version)"
+else
+  echo "  git: NOT FOUND -- install from https://git-scm.com/downloads"
+  note_missing "git (skipped: exa-search + perplexity-server fetch)"
+fi
 
 HAS_BUN=0
 if command -v bun >/dev/null 2>&1; then
@@ -74,78 +92,77 @@ fi
 
 echo ""
 
-# --- step 2: copy exa-search skill to ~/.claude/skills ----------------------
-echo "[2/6] installing exa-search skill"
-EXA_SRC="$DEPS_DIR/skills/exa-search"
+# --- step 2: clone exa-search skill from GitHub ------------------------------
+echo "[2/6] installing exa-search skill (from $EXA_SEARCH_REPO)"
 EXA_DST="$HOME_SKILLS/exa-search"
 if [ -d "$EXA_DST" ]; then
   echo "  $EXA_DST already exists -- skipping (re-install: 'rm -rf $EXA_DST' then re-run)"
   note_skipped "exa-search skill (already installed)"
-else
-  if [ ! -d "$EXA_SRC" ]; then
-    echo "  exa-search source missing at $EXA_SRC -- bundle is incomplete"
-    note_missing "exa-search source"
+elif [ "$HAS_GIT" = "1" ]; then
+  mkdir -p "$HOME_SKILLS"
+  if git clone --depth 1 "$EXA_SEARCH_REPO" "$EXA_DST" >/dev/null 2>&1; then
+    rm -rf "$EXA_DST/.git"
+    echo "  cloned -> $EXA_DST"
+    note_installed "exa-search skill (cloned from GitHub)"
   else
-    mkdir -p "$HOME_SKILLS"
-    cp -R "$EXA_SRC" "$EXA_DST"
-    echo "  copied -> $EXA_DST"
-    note_installed "exa-search skill (~/.claude/skills/exa-search)"
+    echo "  clone failed -- clone manually: git clone $EXA_SEARCH_REPO $EXA_DST"
+    note_missing "exa-search skill (clone failed)"
   fi
+else
+  echo "  skipped (git missing) -- clone manually: git clone $EXA_SEARCH_REPO $EXA_DST"
+  note_missing "exa-search skill (git missing)"
 fi
 echo ""
 
-# --- step 3: install paper-search-mcp (python) ------------------------------
-echo "[3/6] installing paper-search-mcp"
+# --- step 3: install paper-search-mcp from PyPI ------------------------------
+echo "[3/6] installing paper-search-mcp (PyPI, MIT license)"
 if [ "$HAS_PY" = "1" ]; then
-  PAPER_SRC="$DEPS_DIR/MCPs/paper-search-mcp"
-  if [ -d "$PAPER_SRC" ]; then
-    if $PY_BIN -m pip install "$PAPER_SRC" >/dev/null 2>&1; then
-      echo "  installed from bundled source"
-      note_installed "paper-search-mcp (from bundled source)"
-    else
-      echo "  bundled install failed; trying PyPI fallback"
-      if $PY_BIN -m pip install paper-search-mcp >/dev/null 2>&1; then
-        echo "  installed from PyPI"
-        note_installed "paper-search-mcp (from PyPI fallback)"
-      else
-        echo "  pip install failed -- run manually: $PY_BIN -m pip install paper-search-mcp"
-        note_missing "paper-search-mcp (pip install failed)"
-      fi
-    fi
+  if $PY_BIN -m pip install paper-search-mcp >/dev/null 2>&1; then
+    echo "  installed from PyPI"
+    note_installed "paper-search-mcp (PyPI)"
   else
-    echo "  bundled source missing; trying PyPI directly"
-    if $PY_BIN -m pip install paper-search-mcp >/dev/null 2>&1; then
-      echo "  installed from PyPI"
-      note_installed "paper-search-mcp (from PyPI)"
-    else
-      echo "  pip install failed"
-      note_missing "paper-search-mcp (pip install failed)"
-    fi
+    echo "  pip install failed -- run manually: $PY_BIN -m pip install paper-search-mcp"
+    note_missing "paper-search-mcp (pip install failed)"
   fi
 else
   echo "  skipped (python missing)"
 fi
 echo ""
 
-# --- step 4: build perplexity-server (bun) ----------------------------------
-echo "[4/6] building perplexity-server"
-PERP_DIR="$DEPS_DIR/MCPs/perplexity-server"
-if [ "$HAS_BUN" = "1" ]; then
-  if [ -d "$PERP_DIR" ]; then
-    (
-      cd "$PERP_DIR"
-      echo "  bun install"
-      bun install >/dev/null 2>&1 || { echo "  bun install failed"; exit 1; }
-      echo "  bun run build"
-      bun run build >/dev/null 2>&1 || { echo "  bun run build failed"; exit 1; }
-    ) && { echo "  built: $PERP_DIR/build/main.js"; note_installed "perplexity-server (built)"; } \
-       || note_missing "perplexity-server (build failed)"
+# --- step 4: clone + build perplexity-server ---------------------------------
+echo "[4/6] installing perplexity-server (from $PERPLEXITY_SERVER_REPO)"
+echo "  License: GPL-3.0-or-later (upstream, not this skill's license -- kept out-of-tree for that reason)."
+echo "  How it works: drives the free Perplexity web UI via Puppeteer, no API key. Review Perplexity's"
+echo "  Terms of Service before relying on this in a way you're not comfortable with; it is not an"
+echo "  officially sanctioned integration."
+PERP_DIR="$VENDOR_DIR/perplexity-mcp-zerver"
+if [ -d "$PERP_DIR" ]; then
+  echo "  $PERP_DIR already exists -- skipping clone (re-install: 'rm -rf $PERP_DIR' then re-run)"
+  note_skipped "perplexity-server source (already cloned)"
+elif [ "$HAS_GIT" = "1" ]; then
+  mkdir -p "$VENDOR_DIR"
+  if git clone --depth 1 "$PERPLEXITY_SERVER_REPO" "$PERP_DIR" >/dev/null 2>&1; then
+    echo "  cloned -> $PERP_DIR"
   else
-    echo "  bundled source missing at $PERP_DIR"
-    note_missing "perplexity-server source"
+    echo "  clone failed -- clone manually: git clone $PERPLEXITY_SERVER_REPO $PERP_DIR"
+    note_missing "perplexity-server source (clone failed)"
   fi
 else
-  echo "  skipped (bun missing)"
+  echo "  skipped (git missing) -- clone manually: git clone $PERPLEXITY_SERVER_REPO $PERP_DIR"
+  note_missing "perplexity-server source (git missing)"
+fi
+
+if [ "$HAS_BUN" = "1" ] && [ -d "$PERP_DIR" ]; then
+  (
+    cd "$PERP_DIR"
+    echo "  bun install"
+    bun install >/dev/null 2>&1 || { echo "  bun install failed"; exit 1; }
+    echo "  bun run build"
+    bun run build >/dev/null 2>&1 || { echo "  bun run build failed"; exit 1; }
+  ) && { echo "  built: $PERP_DIR/build/main.js"; note_installed "perplexity-server (cloned + built)"; } \
+     || note_missing "perplexity-server (build failed)"
+elif [ "$HAS_BUN" != "1" ]; then
+  echo "  skipped build (bun missing)"
 fi
 echo ""
 
@@ -171,16 +188,15 @@ if [ "$HAS_CLAUDE" = "1" ]; then
     fi
   fi
 
-  # perplexity-server
+  # perplexity-server -- no API key needed, ever (it drives the free web UI).
   if claude mcp get perplexity-server >/dev/null 2>&1; then
     echo "  perplexity-server: already registered -- skipping"
     note_skipped "perplexity-server MCP (already registered)"
   else
     if [ "$HAS_BUN" = "1" ] && [ -f "$PERP_DIR/build/main.js" ]; then
       if claude mcp add --scope user perplexity-server -- bun "$PERP_DIR/build/main.js" >/dev/null 2>&1; then
-        echo "  perplexity-server: registered"
+        echo "  perplexity-server: registered (no API key required)"
         note_installed "perplexity-server MCP registration"
-        note_needs_key "PERPLEXITY_API_KEY -- export PERPLEXITY_API_KEY=<key> (https://docs.perplexity.ai/)"
       else
         echo "  perplexity-server: registration failed -- run manually:"
         echo "    claude mcp add --scope user perplexity-server -- bun $PERP_DIR/build/main.js"
@@ -197,7 +213,7 @@ echo ""
 
 # --- step 6: print Firecrawl manual line ------------------------------------
 echo "[6/6] Firecrawl MCP -- manual step (needs your API key)"
-echo "  Get a key: https://firecrawl.dev/"
+echo "  Get a key: https://www.firecrawl.dev/app/api-keys"
 echo "  Then run:"
 echo "    claude mcp add --transport http --scope user firecrawl https://mcp.firecrawl.dev/<FIRECRAWL_API_KEY>/v2/mcp"
 note_needs_key "Firecrawl MCP -- run the printed 'claude mcp add' after you have a key"

@@ -50,6 +50,8 @@ User can override: "quick"/"basic", "deep"/"max", or "searches: N".
 
 Carry the round-1 URL list forward and dedupe round-2 hits against it before synthesizing.
 
+**This is a protocol you (the orchestrating agent) execute, not a script that enforces it for you.** Nothing catches a skipped round 2 or a round 2 that quietly repeats round 1 — that's on you, every time.
+
 ---
 
 ## Perplexity routing rule
@@ -151,3 +153,5 @@ Rule: if a **critical-path** query fails (engine down / quota-exhausted / key-in
 ```
 
 Incidents are auto-logged by the wrappers to `~/.claude/deep-research-logs/api-failures.jsonl` (one JSON line per incident) for post-hoc rate-limit analysis.
+
+**Verify, don't just remember.** Run `bash scripts/dr_config.sh check-failures` before finalizing any output — it reads this log for critical-path hits since the run started and exits non-zero if you need to prepend the callout above. The logging is code-enforced; whether the callout actually reaches the user was, until this command existed, entirely dependent on the orchestrating agent's memory.

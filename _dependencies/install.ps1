@@ -1,16 +1,25 @@
-# install.ps1 -- bootstraps the deep-research skill's bundled dependencies (Windows mirror of install.sh).
+# install.ps1 -- bootstraps the deep-research skill's dependencies (Windows mirror of install.sh).
 # Idempotent: safe to re-run. Skips anything already in place.
 # PowerShell 5.1+ compatible (no &&, no ternary, no ?., no ??).
+#
+# Nothing here is vendored into this repo. Every dependency is fetched live
+# from its own source at install time -- one companion skill from Hunter's
+# GitHub, one package from PyPI, one MCP server cloned from its upstream
+# author. See references/onboarding.md for what each one does and why.
 
 $ErrorActionPreference = 'Stop'
 
 # --- resolve paths -----------------------------------------------------------
 $ScriptDir = $PSScriptRoot
 $SkillRoot = (Resolve-Path (Join-Path $ScriptDir '..')).Path
-$DepsDir   = $ScriptDir
 $HomeDir   = $env:USERPROFILE
 if ([string]::IsNullOrEmpty($HomeDir)) { $HomeDir = $HOME }
 $HomeSkills = Join-Path $HomeDir '.claude\skills'
+$DrHome     = Join-Path $HomeDir '.claude\deep-research'
+$VendorDir  = Join-Path $DrHome 'vendor'
+
+$ExaSearchRepo        = 'https://github.com/Huntehhh/exa-search.git'
+$PerplexityServerRepo = 'https://github.com/wysh3/perplexity-mcp-zerver.git'
 
 Write-Host "deep-research installer"
 Write-Host "  ScriptDir: $ScriptDir"
@@ -36,6 +45,15 @@ function Have-Cmd($name) {
 
 # --- prereq detection (informational, never fatal) --------------------------
 Write-Host "[1/6] checking prerequisites"
+
+$HasGit = $false
+if (Have-Cmd 'git') {
+  $HasGit = $true
+  Write-Host "  git: present"
+} else {
+  Write-Host "  git: NOT FOUND -- install from https://git-scm.com/downloads"
+  Note-Missing "git (skipped: exa-search + perplexity-server fetch)"
+}
 
 $HasBun = $false
 if (Have-Cmd 'bun') {
@@ -89,53 +107,47 @@ if (Have-Cmd 'claude') {
 }
 Write-Host ""
 
-# --- step 2: copy exa-search skill to ~/.claude/skills ----------------------
-Write-Host "[2/6] installing exa-search skill"
-$ExaSrc = Join-Path $DepsDir 'skills\exa-search'
+# --- step 2: clone exa-search skill from GitHub ------------------------------
+Write-Host "[2/6] installing exa-search skill (from $ExaSearchRepo)"
 $ExaDst = Join-Path $HomeSkills 'exa-search'
 if (Test-Path $ExaDst) {
   Write-Host "  $ExaDst already exists -- skipping (re-install: remove the folder, then re-run)"
   Note-Skipped "exa-search skill (already installed)"
-} else {
-  if (-not (Test-Path $ExaSrc)) {
-    Write-Host "  exa-search source missing at $ExaSrc -- bundle is incomplete"
-    Note-Missing "exa-search source"
-  } else {
-    if (-not (Test-Path $HomeSkills)) { New-Item -ItemType Directory -Path $HomeSkills -Force | Out-Null }
-    Copy-Item -Path $ExaSrc -Destination $ExaDst -Recurse -Force
-    Write-Host "  copied -> $ExaDst"
-    Note-Installed "exa-search skill ($ExaDst)"
+} elseif ($HasGit) {
+  if (-not (Test-Path $HomeSkills)) { New-Item -ItemType Directory -Path $HomeSkills -Force | Out-Null }
+  try {
+    & git clone --depth 1 $ExaSearchRepo $ExaDst *>$null
+    if ($LASTEXITCODE -eq 0) {
+      Remove-Item -Path (Join-Path $ExaDst '.git') -Recurse -Force -ErrorAction SilentlyContinue
+      Write-Host "  cloned -> $ExaDst"
+      Note-Installed "exa-search skill (cloned from GitHub)"
+    } else {
+      Write-Host "  clone failed -- clone manually: git clone $ExaSearchRepo $ExaDst"
+      Note-Missing "exa-search skill (clone failed)"
+    }
+  } catch {
+    Write-Host "  clone failed -- clone manually: git clone $ExaSearchRepo $ExaDst"
+    Note-Missing "exa-search skill (clone failed)"
   }
+} else {
+  Write-Host "  skipped (git missing) -- clone manually: git clone $ExaSearchRepo $ExaDst"
+  Note-Missing "exa-search skill (git missing)"
 }
 Write-Host ""
 
-# --- step 3: install paper-search-mcp (python) ------------------------------
-Write-Host "[3/6] installing paper-search-mcp"
+# --- step 3: install paper-search-mcp from PyPI ------------------------------
+Write-Host "[3/6] installing paper-search-mcp (PyPI, MIT license)"
 if ($HasPy) {
-  $PaperSrc = Join-Path $DepsDir 'MCPs\paper-search-mcp'
-  $InstalledOk = $false
-  if (Test-Path $PaperSrc) {
-    try {
-      & $PyBin -m pip install $PaperSrc *>$null
-      if ($LASTEXITCODE -eq 0) {
-        Write-Host "  installed from bundled source"
-        Note-Installed "paper-search-mcp (from bundled source)"
-        $InstalledOk = $true
-      }
-    } catch {}
-  }
-  if (-not $InstalledOk) {
-    Write-Host "  trying PyPI fallback"
-    try {
-      & $PyBin -m pip install paper-search-mcp *>$null
-      if ($LASTEXITCODE -eq 0) {
-        Write-Host "  installed from PyPI"
-        Note-Installed "paper-search-mcp (from PyPI fallback)"
-        $InstalledOk = $true
-      }
-    } catch {}
-  }
-  if (-not $InstalledOk) {
+  try {
+    & $PyBin -m pip install paper-search-mcp *>$null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  installed from PyPI"
+      Note-Installed "paper-search-mcp (PyPI)"
+    } else {
+      Write-Host "  pip install failed -- run manually: $PyBin -m pip install paper-search-mcp"
+      Note-Missing "paper-search-mcp (pip install failed)"
+    }
+  } catch {
     Write-Host "  pip install failed -- run manually: $PyBin -m pip install paper-search-mcp"
     Note-Missing "paper-search-mcp (pip install failed)"
   }
@@ -144,37 +156,58 @@ if ($HasPy) {
 }
 Write-Host ""
 
-# --- step 4: build perplexity-server (bun) ----------------------------------
-Write-Host "[4/6] building perplexity-server"
-$PerpDir = Join-Path $DepsDir 'MCPs\perplexity-server'
-if ($HasBun) {
-  if (Test-Path $PerpDir) {
-    Push-Location $PerpDir
-    $BuildOk = $true
-    try {
-      Write-Host "  bun install"
-      & bun install *>$null
-      if ($LASTEXITCODE -ne 0) { $BuildOk = $false }
-      if ($BuildOk) {
-        Write-Host "  bun run build"
-        & bun run build *>$null
-        if ($LASTEXITCODE -ne 0) { $BuildOk = $false }
-      }
-    } catch { $BuildOk = $false }
-    Pop-Location
-    if ($BuildOk) {
-      Write-Host "  built: $PerpDir\build\main.js"
-      Note-Installed "perplexity-server (built)"
+# --- step 4: clone + build perplexity-server ---------------------------------
+Write-Host "[4/6] installing perplexity-server (from $PerplexityServerRepo)"
+Write-Host "  License: GPL-3.0-or-later (upstream, not this skill's license -- kept out-of-tree for that reason)."
+Write-Host "  How it works: drives the free Perplexity web UI via Puppeteer, no API key. Review Perplexity's"
+Write-Host "  Terms of Service before relying on this in a way you're not comfortable with; it is not an"
+Write-Host "  officially sanctioned integration."
+$PerpDir = Join-Path $VendorDir 'perplexity-mcp-zerver'
+if (Test-Path $PerpDir) {
+  Write-Host "  $PerpDir already exists -- skipping clone (re-install: remove the folder, then re-run)"
+  Note-Skipped "perplexity-server source (already cloned)"
+} elseif ($HasGit) {
+  if (-not (Test-Path $VendorDir)) { New-Item -ItemType Directory -Path $VendorDir -Force | Out-Null }
+  try {
+    & git clone --depth 1 $PerplexityServerRepo $PerpDir *>$null
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  cloned -> $PerpDir"
     } else {
-      Write-Host "  build failed"
-      Note-Missing "perplexity-server (build failed)"
+      Write-Host "  clone failed -- clone manually: git clone $PerplexityServerRepo $PerpDir"
+      Note-Missing "perplexity-server source (clone failed)"
     }
-  } else {
-    Write-Host "  bundled source missing at $PerpDir"
-    Note-Missing "perplexity-server source"
+  } catch {
+    Write-Host "  clone failed -- clone manually: git clone $PerplexityServerRepo $PerpDir"
+    Note-Missing "perplexity-server source (clone failed)"
   }
 } else {
-  Write-Host "  skipped (bun missing)"
+  Write-Host "  skipped (git missing) -- clone manually: git clone $PerplexityServerRepo $PerpDir"
+  Note-Missing "perplexity-server source (git missing)"
+}
+
+if ($HasBun -and (Test-Path $PerpDir)) {
+  Push-Location $PerpDir
+  $BuildOk = $true
+  try {
+    Write-Host "  bun install"
+    & bun install *>$null
+    if ($LASTEXITCODE -ne 0) { $BuildOk = $false }
+    if ($BuildOk) {
+      Write-Host "  bun run build"
+      & bun run build *>$null
+      if ($LASTEXITCODE -ne 0) { $BuildOk = $false }
+    }
+  } catch { $BuildOk = $false }
+  Pop-Location
+  if ($BuildOk) {
+    Write-Host "  built: $PerpDir\build\main.js"
+    Note-Installed "perplexity-server (cloned + built)"
+  } else {
+    Write-Host "  build failed"
+    Note-Missing "perplexity-server (build failed)"
+  }
+} elseif (-not $HasBun) {
+  Write-Host "  skipped build (bun missing)"
 }
 Write-Host ""
 
@@ -208,7 +241,7 @@ if ($HasClaude) {
     }
   }
 
-  # perplexity-server
+  # perplexity-server -- no API key needed, ever (it drives the free web UI).
   $PerpReg = $false
   try { & claude mcp get perplexity-server *>$null; if ($LASTEXITCODE -eq 0) { $PerpReg = $true } } catch {}
   if ($PerpReg) {
@@ -220,9 +253,8 @@ if ($HasClaude) {
       try {
         & claude mcp add --scope user perplexity-server -- bun $BuiltMain *>$null
         if ($LASTEXITCODE -eq 0) {
-          Write-Host "  perplexity-server: registered"
+          Write-Host "  perplexity-server: registered (no API key required)"
           Note-Installed "perplexity-server MCP registration"
-          Note-NeedsKey "PERPLEXITY_API_KEY -- `$env:PERPLEXITY_API_KEY = '<key>' or setx (https://docs.perplexity.ai/)"
         } else {
           Write-Host "  perplexity-server: registration failed -- run manually:"
           Write-Host "    claude mcp add --scope user perplexity-server -- bun $BuiltMain"
@@ -243,7 +275,7 @@ Write-Host ""
 
 # --- step 6: print Firecrawl manual line ------------------------------------
 Write-Host "[6/6] Firecrawl MCP -- manual step (needs your API key)"
-Write-Host "  Get a key: https://firecrawl.dev/"
+Write-Host "  Get a key: https://www.firecrawl.dev/app/api-keys"
 Write-Host "  Then run:"
 Write-Host "    claude mcp add --transport http --scope user firecrawl https://mcp.firecrawl.dev/<FIRECRAWL_API_KEY>/v2/mcp"
 Note-NeedsKey "Firecrawl MCP -- run the printed 'claude mcp add' after you have a key"
