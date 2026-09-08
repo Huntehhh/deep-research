@@ -1,0 +1,7 @@
+# Runtime state (created on first use, never checked in)
+output/
+*.env
+.env.*
+
+# Fetched at install time, never vendored — see _dependencies/INSTALL.md
+_dependencies/vendor/
