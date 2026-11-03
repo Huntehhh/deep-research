@@ -149,6 +149,7 @@ YOUR MISSION: [one sentence describing your specific research objective]
 
 SKILL: Scan available_skills and read the matching research skill's SKILL.md first.
 SEARCH BACKEND: exa-search scripts at ~/.claude/skills/exa-search/scripts/
+EXA RULE: global EXA_API_KEY via those scripts only, never mcp__claude_ai_Exa__*. EXA_FATAL -> stop, return EXA_FAILURE + the verbatim error. EXA_ERROR -> retry once, then the same.
 
 SEARCH STRATEGY for your lane:
 1. [Search query 1 — semantic/Exa]
@@ -1018,7 +1019,9 @@ Every Wave 1 and Wave 2 agent uses an available research skill as their research
 ```
 MANDATORY: Scan available_skills and read the matching research skill's SKILL.md first.
 1. Read the matching SKILL.md in ~/.claude/skills/<research-skill>/
-2. Use exa-search as the primary backend: bash ~/.claude/skills/exa-search/scripts/exa_search.sh
+2. Use exa-search as the mandatory backend: bash ~/.claude/skills/exa-search/scripts/exa_search.sh
+   (global EXA_API_KEY; never mcp__claude_ai_Exa__*; EXA_FATAL, or an EXA_ERROR that fails its one
+   retry -> stop and return EXA_FAILURE + the verbatim error)
 3. Search strategy for your lane:
    - 2-3 Exa semantic searches (conversational query style)
    - 2-3 targeted web_search with site: operators
@@ -1037,7 +1040,10 @@ The exa-search skill provides the search backbone. Key scripts used:
 | `exa_deep_search.sh` | Complex multi-faceted queries in Wave 1 |
 | `exa_company.sh` | Company/organization research (BUILD-VS-BUY, PERSON) |
 | `exa_crawl.sh` | Deep-dive on specific URLs found in Wave 1 |
-| `exa_researcher.sh` | Long-running async research for complex topics |
+| `exa_researcher.sh` | Long-running async research for complex topics (Exa has deprecated `/research`; prefer `exa_deep_search.sh`) |
+| `exa_doctor.sh` | The Exa gate: run once before Wave 1 spawns |
+
+Failure contract: every script prints `EXA_FATAL` (exit 3) or `EXA_ERROR` (exit 1) on failure (exa-search SKILL.md). An agent returning `EXA_FAILURE:` stops the whole run (SKILL.md, "Exa gate").
 
 ### 11.3 nano-banana-pro Integration
 

@@ -1,6 +1,6 @@
 # Multi-Engine Routing, Multi-Round Search, Fallover & Alerting
 
-The operational brain for multi-engine mode. Loaded when a research query needs more than Exa. This file is the source of truth for routing; `SKILL.md` carries only a short summary that points here.
+The operational brain for multi-engine mode. Exa runs in every category (SKILL.md, "Exa gate"); this file decides which engines join it and in what order. This file is the source of truth for routing; `SKILL.md` carries only a short summary that points here.
 
 ## Table of contents
 - [Intent -> engine-category routing](#intent--engine-category-routing)
@@ -16,19 +16,20 @@ The operational brain for multi-engine mode. Loaded when a research query needs 
 
 ## Intent -> engine-category routing
 
-Classify the query, then call that category's engine set. When intent is ambiguous, default to General and widen only if results are thin.
+Classify the query, then call that category's engine set. When intent is ambiguous, default to General and widen only if results are thin. **Exa is in every row:** it always runs, through the exa-search scripts, and the row decides what joins it.
 
 | Query shape (trigger) | Category | Engines (in call order) |
 |---|---|---|
-| "look this up" / "what is" / generic web | **General** | serper -> brave_search -> exa (via exa-search skill) -> linkup -> tavily / brave_llm_context for cleaned chunks |
-| "find the team behind" / "who's at company X" / "look up [person]" / "enrich" | **B2B** | pdl_lookup, github_repo_people (repos), theirstack_jobs (hiring signal), explorium_enrich (company); see Lusha rule for phone |
-| clinical / medical / peptide / lab / biomarker / drug / protocol | **Privacy/Clinical** | pubmed_search + clinicaltrials_search + openfda_drug + rxnorm_lookup; brave_search (ZDR-eligible) for general web. PHI never leaves the boundary (below) |
-| "latest" / "today" / "recent" / "breaking" | **News/Freshness** | serper (tbs qdr:d) -> brave_search -> perplexity-server MCP for synthesized answer |
-| "research this topic" / "compile a brief" / "synthesize evidence" / "deep dive" | **Multi-Step/Agentic** | perplexity-server MCP first; EXA Deep Research and/or OpenRouter `perplexity/sonar-deep-research` or `openai/o4-mini-deep-research` only if MCP can't |
-| "find papers on" / "peer-reviewed" / "meta-analysis" / "study" | **Academic** | paper-search MCP (21 sources) first; pubmed_search direct as fallback |
-| "scrape" / "extract page content from URL" | **Heavy Extraction** | Firecrawl MCP (fastest) -> perplexity-server `extract_url_content` -> chrome-devtools MCP -> escalate (see [Heavy extraction & credit-aware escalation](#heavy-extraction--credit-aware-escalation)) |
+| "look this up" / "what is" / generic web | **General** | **exa_search** (always) + serper -> brave_search -> linkup -> tavily / brave_llm_context for cleaned chunks |
+| "find the team behind" / "who's at company X" / "look up [person]" / "enrich" | **B2B** | **exa_company / exa_linkedin** (always) + pdl_lookup, github_repo_people (repos), theirstack_jobs (hiring signal), explorium_enrich (company); see Lusha rule for phone |
+| clinical / medical / peptide / lab / biomarker / drug / protocol | **Clinical** | **exa_search category `research paper`** (always; anonymized term only) + pubmed_search + clinicaltrials_search + openfda_drug + rxnorm_lookup; brave_search (ZDR-eligible) for general web. PHI never leaves the boundary (below) |
+| a specific person's labs / symptoms / case (HIPAA-adjacent) | **Privacy** | **exa_search** (always; anonymized terms only, accepted even though a standard Exa key has no zero data retention) + brave_search (ZDR-eligible). No other logged engine (serper / tavily / linkup) |
+| "latest" / "today" / "recent" / "breaking" | **News/Freshness** | **exa_search category `news` + `startPublishedDate`** (always) + serper (tbs qdr:d) -> brave_search -> perplexity-server MCP for synthesized answer |
+| "research this topic" / "compile a brief" / "synthesize evidence" / "deep dive" | **Multi-Step/Agentic** | **exa_deep_search, two-phase** (always) + perplexity-server MCP; OpenRouter `perplexity/sonar-deep-research` or `openai/o4-mini-deep-research` only if the MCP can't |
+| "find papers on" / "peer-reviewed" / "meta-analysis" / "study" | **Academic** | **exa_search category `research paper`** (always) + paper-search MCP (21 sources); pubmed_search direct as fallback |
+| "scrape" / "extract page content from URL" | **Heavy Extraction** | **exa_crawl** (always first) -> Firecrawl MCP -> perplexity-server `extract_url_content` -> chrome-devtools MCP -> escalate (see [Heavy extraction & credit-aware escalation](#heavy-extraction--credit-aware-escalation)) |
 
-**Wrapper location:** `scripts/engines/<engine>.sh` under this skill. Invoke with `bash scripts/engines/<name>.sh "<args>"`. Exa stays in the separate `exa-search` skill (`bash ~/.claude/skills/exa-search/scripts/exa_search.sh`).
+**Wrapper location:** `scripts/engines/<engine>.sh` under this skill. Invoke with `bash scripts/engines/<name>.sh "<args>"`. Exa stays in the separate `exa-search` skill (`bash ~/.claude/skills/exa-search/scripts/exa_search.sh` and siblings). Never the claude.ai Exa connector (`mcp__claude_ai_Exa__*`).
 
 ---
 
@@ -71,12 +72,13 @@ OpenRouter call shape: POST `https://openrouter.ai/api/v1/chat/completions`, hea
 Extraction routes to the fastest capable tool, then degrades gracefully and **keeps the user in the loop on cost**.
 
 **Order:**
-1. **Firecrawl MCP** (`firecrawl_scrape` for one page, `firecrawl_extract` for structured fields) — preferred. A hosted API: faster and lighter than any browser-driver, and it clears most Cloudflare / JS-rendered pages. Free tier ~1,000 pages/mo.
-2. **perplexity-server `extract_url_content`** — free, but slower (drives a headless browser under the hood).
-3. **chrome-devtools MCP** (`navigate_page` -> `take_snapshot`) — free, slowest, last resort.
-4. If the category still can't get the page, you MAY reach for another MCP/skill that fits (a stealth browser tool, if the user has one). State which you used and why.
+1. **`exa_crawl.sh`** (Exa `/contents`) — always first: cheap and fast, from Exa's cache or a live crawl. A single URL that comes back empty, truncated, a block page, or with a per-URL error status (e.g. `CRAWL_NOT_FOUND`) is a miss, not an Exa failure: move on to step 2. Only an `EXA_FATAL`/`EXA_ERROR` marker triggers the Exa gate.
+2. **Firecrawl MCP** (`firecrawl_scrape` for one page, `firecrawl_extract` for structured fields) — preferred after Exa. A hosted API: faster and lighter than any browser-driver, and it clears most Cloudflare / JS-rendered pages. Free tier ~1,000 pages/mo.
+3. **perplexity-server `extract_url_content`** — free, but slower (drives a headless browser under the hood).
+4. **chrome-devtools MCP** (`navigate_page` -> `take_snapshot`) — free, slowest, last resort.
+5. If the category still can't get the page, you MAY reach for another MCP/skill that fits (a stealth browser tool, if the user has one). State which you used and why.
 
-**Firecrawl quota (HTTP 402, or "limit"/"quota"/"insufficient credits" in the response) = stop using Firecrawl for this run.** Fall over to step 2/3 silently, then **tell the user at the very end** (not mid-task):
+**Firecrawl quota (HTTP 402, or "limit"/"quota"/"insufficient credits" in the response) = stop using Firecrawl for this run.** Fall over to step 3/4 silently, then **tell the user at the very end** (not mid-task):
 
 > Heads up — I used [perplexity extract / chrome-devtools] instead of Firecrawl on [N] page(s) because your Firecrawl plan limit was hit. A bit more compute, but the task still got done.
 
@@ -90,13 +92,15 @@ Honor the answer (the user may also propose a different tool). Push past a block
 
 ## Lusha special-case routing
 
-`lusha_phone.sh` is called ONLY when the intent is "find phone for [name]" / "direct dial for [person]". It is phone-lookup only (5 credits/phone, 40 credits/mo free, single key, no backup). Never use Lusha for bulk B2B — that routes to pdl/explorium/theirstack/github.
+`lusha_phone.sh` is called ONLY when the intent is "find phone for [name]" / "direct dial for [person]". It is phone-lookup only (5 credits/phone, 40 credits/mo free, single key, no backup). Never use Lusha for bulk B2B — that routes to pdl/explorium/theirstack/github. Run `exa_linkedin.sh` first to pin down which person you mean (Exa runs in every lane).
 
 ---
 
 ## Backup-key fallover
 
 Handled automatically by `scripts/engines/engine_common.sh` (`dr_run_with_fallover`). Every paid/quota engine has `<ENGINE>_API_KEY` (primary) + `<ENGINE>_API_KEY_BACKUP`. On 401/402/403/429/5xx or a rate/quota body match, the wrapper retries with the backup key. Lusha is single-key (no backup) -> surfaces a critical alert on exhaustion. You do not orchestrate this; just read the wrapper's exit code and check stderr for a `DR_FAILURE:` line.
+
+**Exa is the exception: no backup-key fallover, ever.** Every run uses the one global `EXA_API_KEY`; `EXA_API_KEY_BACKUP` is never read. An Exa failure is a hard stop (SKILL.md, "Exa gate"), and the exa-search scripts mark it with `EXA_FATAL:` / `EXA_ERROR:` rather than `DR_FAILURE:`.
 
 ---
 
@@ -109,7 +113,7 @@ The router should not burn a low-quota engine on traffic it could send elsewhere
 | serper | 4,500 | 4,000 | fall to brave_search |
 | tavily | 1,800 | 1,500 | fall to brave_llm_context |
 | brave_search | 1,800 | 1,500 | alert (no further free general option) |
-| exa | 900 | 700 | fall to brave/linkup |
+| exa | your plan's credits | none | never diverted: Exa stays in every run. Out of credits = Exa returns 402 `NO_MORE_CREDITS`, the scripts print `EXA_FATAL`, and the run stops for a working key |
 | linkup | $36 balance | $30 | alert + halt new linkup calls |
 | pdl | 180 | 150 | fall to theirstack + github |
 | lusha | 36 | 30 | alert (phone capacity exhausted) |
@@ -129,17 +133,18 @@ Rule: if a **critical-path** query fails (engine down / quota-exhausted / key-in
 
 | Intent | Critical engines | Alert message |
 |---|---|---|
+| **Any lane** | exa (`EXA_FATAL`, or an `EXA_ERROR` that survives one retry) | Not a callout but a **halt**: "Exa isn't working, so I stopped. The error: [verbatim]. Paste a working Exa key and I'll continue." (SKILL.md, "Exa gate") |
 | B2B / person lookup | pdl + explorium (both fail) | "B2B enrichment unavailable; proceeding with web-search-only results -- confirm before relying on output" |
 | Phone lookup | lusha (single key) | "Phone lookup unavailable; Lusha quota exhausted or invalid. Wait until next month or upgrade." |
 | Clinical evidence | paper-search MCP + pubmed (both fail) | "Academic search unavailable; results will lack peer-reviewed citations" |
-| Privacy-sensitive (HIPAA-adjacent) | brave_search (ZDR-eligible) | "Brave down; falling back to a logged engine would violate ZDR posture. Halting -- ask user." |
+| Privacy-sensitive (HIPAA-adjacent) | brave_search (ZDR-eligible) | "Brave down; this lane may use only Exa (anonymized) and Brave. Are Exa-only results enough? I won't fall back to another logged engine." -- ask the user |
 | Multi-step research | perplexity-server + OpenRouter perplexity (both fail) | "Deep research unavailable; downgrade to manual exa+claude orchestration?" |
 
 ### Silent fallover OK (interchangeable lanes)
 
 | Intent | Order | Behavior |
 |---|---|---|
-| General research | serper -> brave -> exa -> linkup -> tavily | silently fall over; log only |
+| General research | serper -> brave -> linkup -> tavily | silently fall over; log only. Exa is never in a silent chain: it always runs, and its failures halt |
 | News/freshness | serper -> brave -> perplexity-server | silently fall over |
 | Heavy extraction | Firecrawl MCP -> perplexity-server extract -> chrome-devtools | silently fall over between tools; surface the Firecrawl-quota + high-value-source notices per [Heavy extraction & credit-aware escalation](#heavy-extraction--credit-aware-escalation) |
 
@@ -154,4 +159,4 @@ Rule: if a **critical-path** query fails (engine down / quota-exhausted / key-in
 
 Incidents are auto-logged by the wrappers to `~/.claude/deep-research-logs/api-failures.jsonl` (one JSON line per incident) for post-hoc rate-limit analysis.
 
-**Verify, don't just remember.** Run `bash scripts/dr_config.sh check-failures` before finalizing any output — it reads this log for critical-path hits since the run started and exits non-zero if you need to prepend the callout above. The logging is code-enforced; whether the callout actually reaches the user was, until this command existed, entirely dependent on the orchestrating agent's memory.
+**Verify, don't just remember.** Run `bash scripts/dr_config.sh check-failures --since <the Exa gate's pass time>` before finalizing any output — it reads this log (exa-search writes to it too) for hits since the run started. Exit 1: prepend the callout above. Exit 3: an Exa key failure was logged; don't deliver, stop and ask for a working key. The logging is code-enforced; whether the callout actually reaches the user was, until this command existed, entirely dependent on the orchestrating agent's memory.

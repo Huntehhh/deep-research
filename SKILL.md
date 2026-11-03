@@ -1,7 +1,7 @@
 ---
 name: deep-research
 description: >
-  Research any topic via an intent-routed multi-engine search backend - solo mode for quick lookups, team mode for comprehensive adversarial reports. Routes each query by intent: general web, B2B/people/company, clinical/medical, academic papers (paper-search MCP, 21 sources), $0 multi-step research (perplexity-server MCP), and heavy URL extraction (Firecrawl MCP + fallbacks). Automatic backup-key fallover is code-enforced (engine_common.sh); multi-round search (round-2 anti-overlap) and critical-path failure alerting are protocols the orchestrating agent follows, with a `dr_config.sh check-failures` command to verify at the end of a run rather than trusting memory alone. Solo: 3-15 queries. Team: 6-12 adversarial agents across 3 waves. Auto-detects mode + intent. Run via sub-agent to protect the main context window; incidental mid-task lookups (checking a version, confirming syntax) need only a single search tool call, not this skill. Chains: exa-search, nano-banana-pro, agent-teams. Triggers on (non-exhaustive): "research this", "search the web", "compare options", "find alternatives to", "deep dive on", "deep research", "research team", "who is [person]", "find the team behind", "find papers on", "clinical evidence for", "find phone for", "build vs buy", "audience research", "investigate", "comprehensive research".
+  Research any topic via an intent-routed multi-engine search backend - solo mode for quick lookups, team mode for comprehensive adversarial reports. Routes each query by intent: general web, B2B/people/company, clinical/medical, academic papers (paper-search MCP, 21 sources), $0 multi-step research (perplexity-server MCP), and heavy URL extraction (Firecrawl MCP + fallbacks). Exa (exa-search skill, global EXA_API_KEY) is mandatory in every run: a live preflight gate (`exa_doctor.sh`) runs first, and on any Exa key error the protocol is to stop and ask the user for a working key. Other engines get code-enforced backup-key fallover (engine_common.sh); multi-round search and critical-path alerting are agent protocols, checked at run end by `dr_config.sh check-failures`. Solo: 3-15 queries. Team: 6-12 adversarial agents across 3 waves. Auto-detects mode + intent. Run via sub-agent to protect the main context window; incidental mid-task lookups (checking a version, confirming syntax) need only a single search tool call, not this skill. Chains: exa-search, nano-banana-pro, agent-teams. Triggers on (non-exhaustive): "research this", "search the web", "compare options", "find alternatives to", "deep dive on", "deep research", "research team", "who is [person]", "find the team behind", "find papers on", "clinical evidence for", "find phone for", "build vs buy", "audience research", "investigate", "comprehensive research".
 ---
 
 # Deep Research
@@ -10,42 +10,63 @@ One skill, two modes, one engine arsenal. **Solo** for fast lookups. **Team** fo
 
 ---
 
-## First-run setup check (gate)
+## Exa gate (first step of every run, hard stop)
 
-Before researching, check setup state once — run `bash scripts/dr_config.sh status` (reads `~/.claude/deep-research/configuration.json`):
+Exa is this skill's semantic backbone and is **mandatory in every run**: solo or team, every Wave-1 agent, every gap-fill, every category. Reach it **only through the `exa-search` skill's scripts**. They read the key from the **global environment** (`EXA_API_KEY`; on Windows the User-scope variable wins over whatever the process inherited). Never use the claude.ai Exa connector (`mcp__claude_ai_Exa__*`): it holds its own copy of a key, can return 401 while yours works, and agents then wrongly report "Exa unavailable". Never put the Exa key in this skill's `.env` either; exa-search doesn't read it.
+
+1. **Before any search or agent spawn**, run `bash ~/.claude/skills/exa-search/scripts/exa_doctor.sh`. It passes only when Exa actually answers, and ends with `Exa gate passed at <UTC time>`. Keep that time for `check-failures --since` at the end.
+2. **It fails, or exa-search isn't installed: STOP.** No other engine, no agents, no partial answer. Show the user the exact error lines and ask for a working key, e.g.:
+   > Exa isn't working, so I stopped before researching. The error:
+   > `EXA_FATAL: reason=invalid-key status=401 endpoint=/search` *(paste the real lines)*
+   > Paste a working Exa API key (https://dashboard.exa.ai/api-keys) and I'll check it, save it as your global `EXA_API_KEY`, and pick up where we left off.
+
+   Running as a sub-agent? You can't ask the user. Return at once with `EXA_FAILURE:` plus the verbatim error; the parent session asks.
+3. **They paste a key:** `bash ~/.claude/skills/exa-search/scripts/exa_set_key.sh <key>`. It checks the key live, never saves one that fails, and writes the global variable. Re-run step 1, then resume.
+4. **Mid-run, every Exa script failure starts with one marker on stderr:**
+   - `EXA_FATAL:` (exit 3): key missing, rejected, out of credits, over budget, or team blocked. Stop the whole run now: stop running agents, launch nothing new, don't synthesize partial results. Show the verbatim error and ask for a working key (step 2).
+   - `EXA_ERROR:` (exit 1): bad parameter, plan-disabled option, content filter, rate limit, overload, timeout. Fix what the message says, or wait a few seconds, and retry once. If the retry fails too, stop and show the user the verbatim error. Never carry on quietly without Exa.
+5. **No backup key for Exa**, by design. Every run uses the one global key; `EXA_API_KEY_BACKUP` is never read.
+
+**Privacy-sensitive (HIPAA-adjacent) queries use Exa too, with anonymized terms only** (the PHI rule below). That's a deliberate trade: Exa offers zero data retention only on Enterprise plans, and on a standard key its privacy policy lets it train on queries. No other logged engine joins that lane.
+
+## First-run setup check
+
+Then check setup state once — run `bash scripts/dr_config.sh status` (reads `~/.claude/deep-research/configuration.json`):
 - **No config file** -> first run. Briefly offer the guided setup ([references/onboarding.md](references/onboarding.md)), then proceed.
 - **`onboarding.status == complete`** OR **`reminderPreference == stop_asking`** -> skip setup; go straight to research.
 - **`not_started` / `in_progress`** (and not silenced) -> one non-blocking line: *finish setup / ask next time / stop asking*. Persist the answer via `dr_config.sh`.
 
-**Never block research on setup.** Route with whatever is configured; surface a degraded-output callout only when a *critical* lane (B2B / clinical / multi-step / phone) lacks its engines. Full choose-your-own-adventure setup, per-category keys + signup URLs: [references/onboarding.md](references/onboarding.md).
+**Never block research on setup, except for Exa** (the gate above). Route with whatever else is configured; surface a degraded-output callout only when a *critical* lane (B2B / clinical / multi-step / phone) lacks its engines. Full choose-your-own-adventure setup, per-category keys + signup URLs: [references/onboarding.md](references/onboarding.md).
 
 ---
 
 ## Engine Arsenal & Intent Routing
 
-Before searching, classify the query and route it to the right engine category. This replaces "Exa + web_search for everything." Quick map below; **[references/routing.md](references/routing.md) is authoritative** for full call-order, fallover, caps, and the heavy-extraction credit-aware escalation.
+Before searching, classify the query, then fire **Exa plus that category's engines**. Exa runs in every category (the gate above); the category decides what joins it. Quick map below; **[references/routing.md](references/routing.md) is authoritative** for full call-order, fallover, caps, and the heavy-extraction credit-aware escalation. Exa scripts live in `~/.claude/skills/exa-search/scripts/`.
 
-| Query shape | Category | Primary engine (full order -> routing.md) |
-|---|---|---|
-| generic web / "what is" / "look this up" | **General** | `serper_search.sh` (+ brave/exa/linkup/tavily) |
-| "find the team behind" / "look up [person/company]" / enrich | **B2B** | `pdl_lookup.sh` (+ github/theirstack/explorium) |
-| clinical / peptide / drug / biomarker / lab / protocol | **Privacy/Clinical** | `pubmed_search.sh` (+ clinicaltrials/openfda/rxnorm) |
-| "latest" / "today" / "breaking" | **News** | `serper_search.sh` (qdr:d) -> brave -> perplexity-server |
-| "research this" / "compile a brief" / "synthesize" | **Multi-Step** | perplexity-server MCP (OpenRouter `perplexity/*` fallback only) |
-| "find papers on" / "peer-reviewed" / "meta-analysis" | **Academic** | paper-search MCP (21 sources) |
-| "scrape" / "extract URL content" | **Heavy Extraction** | Firecrawl MCP (-> perplexity extract -> chrome-devtools; credit-aware) |
-| "find phone for [person]" / "direct dial" | **Phone** | `lusha_phone.sh` ONLY (router-gated) |
+| Query shape | Category | Exa's job (every run) | Category engines (full order -> routing.md) |
+|---|---|---|---|
+| generic web / "what is" / "look this up" | **General** | `exa_search.sh` (+ `exa_deep_search.sh` for depth) | `serper_search.sh` -> brave -> linkup / tavily |
+| "find the team behind" / "look up [person/company]" / enrich | **B2B** | `exa_company.sh`, `exa_linkedin.sh` | `pdl_lookup.sh` (+ github/theirstack/explorium) |
+| clinical / peptide / drug / biomarker / lab / protocol | **Clinical** | `exa_search.sh` category `research paper` (anonymized term only) | `pubmed_search.sh` (+ clinicaltrials/openfda/rxnorm) |
+| a specific person's labs / symptoms / case (HIPAA-adjacent) | **Privacy** | `exa_search.sh`, anonymized terms only | `brave_search.sh`; no other logged engine |
+| "latest" / "today" / "breaking" | **News** | `exa_search.sh` category `news` + `startPublishedDate` | `serper_search.sh` (qdr:d) -> brave -> perplexity-server |
+| "research this" / "compile a brief" / "synthesize" | **Multi-Step** | `exa_deep_search.sh`, two-phase | perplexity-server MCP (OpenRouter `perplexity/*` fallback only) |
+| "find papers on" / "peer-reviewed" / "meta-analysis" | **Academic** | `exa_search.sh` category `research paper` | paper-search MCP (21 sources) |
+| "scrape" / "extract URL content" | **Heavy Extraction** | `exa_crawl.sh` first | Firecrawl MCP (-> perplexity extract -> chrome-devtools; credit-aware) |
+| "find phone for [person]" / "direct dial" | **Phone** | `exa_linkedin.sh` to pin down who they are | `lusha_phone.sh` ONLY (router-gated) |
 
-Wrappers: `bash scripts/engines/<name>.sh "<args>"` (keys read from env, primary->backup fallover automatic). Full catalog: [references/engines.md](references/engines.md). Full routing/multi-round/alerting rules: [references/routing.md](references/routing.md).
+Wrappers: `bash scripts/engines/<name>.sh "<args>"` (keys read from env, primary->backup fallover automatic). Exa: the exa-search scripts, one global key, no fallover. Full catalog: [references/engines.md](references/engines.md). Full routing/multi-round/alerting rules: [references/routing.md](references/routing.md).
 
-**Three load-bearing rules** (do not violate):
-1. **Multi-round, default 2.** Round 1 fires half the budget (medium=8 -> 4+4, max=15 -> 7+8). Round 2 MUST inject the anti-overlap prompt (filter out round-1 URLs; find only gaps/contradictions/new angles). See [references/routing.md#multi-round-search](references/routing.md#multi-round-search).
-2. **Perplexity = perplexity-server MCP first**, OpenRouter `perplexity/*` fallback ONLY, **never** a direct `PERPLEXITY_API_KEY`.
-3. **Alert on critical-path failure.** B2B / phone / clinical-evidence / privacy / multi-step lanes must surface a degraded-output callout when their engines fail — never silently downgrade. General/news/extraction lanes fall over silently. See [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting).
+**Four load-bearing rules** (do not violate):
+1. **Exa in every run, through the exa-search scripts only**, behind the [Exa gate](#exa-gate-first-step-of-every-run-hard-stop). An Exa failure that survives one retry halts the run; it never falls over to another engine.
+2. **Multi-round, default 2.** Round 1 fires half the budget (medium=8 -> 4+4, max=15 -> 7+8). Round 2 MUST inject the anti-overlap prompt (filter out round-1 URLs; find only gaps/contradictions/new angles). See [references/routing.md#multi-round-search](references/routing.md#multi-round-search).
+3. **Perplexity = perplexity-server MCP first**, OpenRouter `perplexity/*` fallback ONLY, **never** a direct `PERPLEXITY_API_KEY`.
+4. **Alert on critical-path failure.** B2B / phone / clinical-evidence / privacy / multi-step lanes must surface a degraded-output callout when their engines fail — never silently downgrade. General/news/extraction lanes fall over silently. See [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting).
 
 **PHI safety rule:** for clinical queries, send only the anonymized term (drug/condition/biomarker) to external APIs. Patient identifiers never cross the wire.
 
-**Before finalizing any output (solo or team), run `bash scripts/dr_config.sh check-failures`.** It reads the wrappers' own failure log and tells you whether a critical-path engine failed during this run — a real backstop against forgetting to surface a degraded-output callout, not just a reminder to remember. Non-zero exit = at least one critical-path failure; prepend the callout from [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting) before answering.
+**Before finalizing any output (solo or team), run `bash scripts/dr_config.sh check-failures --since <the gate's pass time>`.** It reads the wrappers' own failure log (exa-search writes to it too) and tells you whether anything critical failed during this run — a real backstop against forgetting, not just a reminder to remember. Exit 3 = an Exa key failure was logged: don't deliver; stop and ask for a working key ([Exa gate](#exa-gate-first-step-of-every-run-hard-stop), step 2). Exit 1 = a critical-path engine failed; prepend the callout from [references/routing.md#api-failure-alerting](references/routing.md#api-failure-alerting) before answering.
 
 ---
 
@@ -92,13 +113,13 @@ Which one? Or just say "go" for my recommendation.
 
 ### Prerequisites — the engine arsenal
 
-Solo mode routes by intent (see [Engine Arsenal & Intent Routing](#engine-arsenal--intent-routing) above). Don't default to Exa-only — pick the category, fire its engines, fall over per [references/routing.md](references/routing.md).
+Solo mode routes by intent (see [Engine Arsenal & Intent Routing](#engine-arsenal--intent-routing) above). Exa always fires; don't stop at Exa either — pick the category, fire its engines too, fall over per [references/routing.md](references/routing.md).
 
 **Resolution order within the General category:**
-1. `scripts/engines/serper_search.sh` (biggest free quota) -> `brave_search.sh` (independent index)
-2. `exa-search` skill for semantic/neural queries -> `bash ~/.claude/skills/exa-search/scripts/exa_search.sh` (needs `EXA_API_KEY`)
+1. **Exa, always:** `bash ~/.claude/skills/exa-search/scripts/exa_search.sh` for semantic discovery, `exa_deep_search.sh` when the question needs synthesis
+2. `scripts/engines/serper_search.sh` (biggest free quota) -> `brave_search.sh` (independent index) for keyword/SERP coverage
 3. `linkup_search.sh` / `tavily_search.sh` / `brave_llm_context.sh` for cleaned LLM-ready content
-4. All down on a critical lane -> surface the degraded-output callout and ask the user.
+4. Exa failing -> the [Exa gate](#exa-gate-first-step-of-every-run-hard-stop) (stop and ask). Every other engine down on a critical lane -> surface the degraded-output callout and ask the user.
 
 For B2B, clinical, academic, multi-step, news, phone, and extraction queries, route to that category's engines/MCPs instead.
 
@@ -120,10 +141,10 @@ For B2B, clinical, academic, multi-step, news, phone, and extraction queries, ro
 
 Execute in order, adapting to query type:
 
-1. **Exa semantic** (2-4 queries) — conversational queries like "developers who switched from X to Y and why"
-   - `deep_search_exa` for research tasks
-   - `get_code_context_exa` for code/repos
-   - Apply categories: `company`, `research paper`, `news`, `github`, `tweet`, `personal site`
+1. **Exa semantic** (2-4 queries) — conversational queries like "developers who switched from X to Y and why", through the exa-search scripts (never the `mcp__claude_ai_Exa__*` tools)
+   - `exa_deep_search.sh` for research tasks
+   - `exa_code.sh` for code/repos
+   - `exa_search.sh "<query>" 8 auto "<category>"` when the content type is known: `company`, `people`, `research paper`, `news`, `pdf`, `github`, `personal site`, `financial report` (`tweet` is retired; Exa returns 400)
 
 2. **Targeted web_search** (3-5 queries) — site-specific patterns
    - See `references/sources.md` for query patterns by category
@@ -239,12 +260,19 @@ MANDATORY: Before executing, scan your available_skills list. If a skill matches
 3. If any step fails, use the skill's built-in fallback chain before improvising
 4. NEVER say "I already have this loaded" as a reason to skip reading the skill file
 
+EXA (mandatory, every agent):
+- Run Exa through the exa-search scripts: bash ~/.claude/skills/exa-search/scripts/exa_search.sh | exa_deep_search.sh | exa_crawl.sh | exa_company.sh | exa_linkedin.sh | exa_code.sh. They read the global EXA_API_KEY.
+- NEVER call the claude.ai Exa connector tools (mcp__claude_ai_Exa__*), even if they're in your tool list.
+- A script prints EXA_FATAL (exit 3): stop at once, write nothing more, and return "EXA_FAILURE:" plus the verbatim error lines.
+- A script prints EXA_ERROR (exit 1): fix the request or wait a few seconds, retry once; if it fails again, stop and return the same way.
+- Never switch to other engines to cover for a broken Exa.
+
 DATA SOURCE ESCALATION (use the engine arsenal — see references/engines.md):
-- Route by intent first: General -> serper/brave/exa/linkup/tavily; B2B -> pdl/github/theirstack/explorium; clinical -> pubmed/clinicaltrials/openfda/rxnorm; academic -> paper-search MCP
-- Synthesized multi-step answer: perplexity-server MCP (then OpenRouter perplexity/* fallback)
-- Paywalled / JS-rendered URL: Firecrawl MCP -> perplexity-server extract_url_content -> chrome-devtools MCP
+- Route by intent first, Exa always included: General -> exa + serper/brave/linkup/tavily; B2B -> exa_company/exa_linkedin + pdl/github/theirstack/explorium; clinical -> exa (research paper, anonymized terms) + pubmed/clinicaltrials/openfda/rxnorm; privacy-sensitive (a specific person's case) -> exa (anonymized terms) + brave_search only; academic -> exa (research paper) + paper-search MCP
+- Synthesized multi-step answer: exa_deep_search.sh + perplexity-server MCP (then OpenRouter perplexity/* fallback)
+- Paywalled / JS-rendered URL: exa_crawl.sh -> Firecrawl MCP -> perplexity-server extract_url_content -> chrome-devtools MCP
 - If bot detection persists: consider a stealth browser tool, if you have one
-- Always try the lightest engine in the category first; the wrappers handle backup-key fallover
+- Always try the lightest engine in the category first; the wrappers handle backup-key fallover (Exa has none: its failures stop you)
 ```
 
 **Concurrency:** Max 5 subagents at once. If mode needs 6, launch 5, then 1 when first completes.
@@ -255,9 +283,10 @@ DATA SOURCE ESCALATION (use the engine arsenal — see references/engines.md):
 - Check agents regularly for insights that redirect the research
 
 **Error handling:**
+- **Agent returns `EXA_FAILURE:`** → stop the run: stop the other running agents (TaskStop), launch nothing new, don't synthesize partial results. Show the user the verbatim error and ask for a working key ([Exa gate](#exa-gate-first-step-of-every-run-hard-stop), step 2). Once the gate passes again, relaunch the agents that hadn't finished.
 - Agent timeout (10 min) → note gap, proceed
 - Agent failure → retry once simplified, then mark as Wave 2 gap
-- All agents fail → fall back to solo mode
+- All agents fail → fall back to solo mode (unless they failed on Exa: that's the stop above)
 
 ---
 
@@ -315,17 +344,17 @@ research/[topic-slug]/
 
 ## Prerequisites
 
-First-time setup is guided — run the onboarding (see [First-run setup check](#first-run-setup-check-gate) + [references/onboarding.md](references/onboarding.md)). Cross-platform installers live in `_dependencies/` (`install.sh` / `install.ps1`); they fetch every dependency live at install time — nothing is vendored into this repo. See `_dependencies/INSTALL.md` for exactly what comes from where and under what license.
+First-time setup is guided — run the onboarding (see [First-run setup check](#first-run-setup-check) + [references/onboarding.md](references/onboarding.md)). Cross-platform installers live in `_dependencies/` (`install.sh` / `install.ps1`); they fetch every dependency live at install time — nothing is vendored into this repo. See `_dependencies/INSTALL.md` for exactly what comes from where and under what license.
 
 Required / recommended skills + MCPs:
-- `exa-search` skill — semantic/neural backend (Solo + Team). A lightweight superset of the Exa MCP (curl + jq, no server).
+- `exa-search` skill — **required**: the semantic backbone of every run (Solo + Team) and the Exa gate. A lightweight superset of the Exa MCP (curl + jq, no server).
 - `firecrawl` MCP — preferred heavy extraction (remote URL, free tier ~1,000 pages/mo)
-- `perplexity-server` MCP — $0 Perplexity for multi-step + URL extraction (browser automation, no key)
+- `perplexity-server` MCP — free Perplexity for multi-step + URL extraction (browser automation, no key)
 - `paper-search` MCP — 21-source academic aggregator
 - `nano-banana-pro` skill — Wave 3 visualization (Team, when data supports graphs; optional)
 - `chrome-devtools` MCP — heavy-extraction last-resort fallback (optional)
 
-Keys are read from the OS environment, OR from `~/.claude/deep-research/.env` (sourced by `engine_common.sh`; **OS env wins**). The onboarding flow writes keys there and tracks state in `~/.claude/deep-research/configuration.json` (no secrets). Every paid/quota engine also supports a `_BACKUP` key.
+Keys are read from the OS environment, OR from `~/.claude/deep-research/.env` (sourced by `engine_common.sh`; **OS env wins**). The onboarding flow writes keys there and tracks state in `~/.claude/deep-research/configuration.json` (no secrets). Every paid/quota engine also supports a `_BACKUP` key. **Exa is the exception:** `EXA_API_KEY` lives in the global environment only. Set it with `bash ~/.claude/skills/exa-search/scripts/exa_set_key.sh <key>` (`dr_config.sh set-key EXA_API_KEY ...` calls it for you): no `.env` copy, no `_BACKUP`.
 - General: `SERPER_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY`, `LINKUP_API_KEY`, `EXA_API_KEY`
 - B2B: `PDL_API_KEY`, `THEIRSTACK_API_KEY`, `EXPLORIUM_API_KEY`, `LUSHA_API_KEY` (single, no backup); GitHub via `gh` CLI auth
 - Heavy extraction: `FIRECRAWL_API_KEY` (Firecrawl MCP)
@@ -335,7 +364,7 @@ Keys are read from the OS environment, OR from `~/.claude/deep-research/.env` (s
 
 **By design never present:** `PERPLEXITY_API_KEY` (use perplexity-server MCP, OpenRouter fallback), `APOLLO_API_KEY`, `HUNTER_IO_API_KEY`.
 
-Missing a key? The wrapper logs `DR_FAILURE: ... reason=no-key` and the router falls over per [references/routing.md](references/routing.md).
+Missing a key? The wrapper logs `DR_FAILURE: ... reason=no-key` and the router falls over per [references/routing.md](references/routing.md). (Exa prints `EXA_FATAL: reason=no-key` instead, and the gate stops the run.)
 
 ---
 
@@ -343,7 +372,8 @@ Missing a key? The wrapper logs `DR_FAILURE: ... reason=no-key` and the router f
 
 Being precise about this matters more than it costs to admit it:
 
-- **Backup-key fallover is real code.** `scripts/engines/engine_common.sh` (`dr_run_with_fallover`) tries the primary key, detects 401/402/403/429/5xx or a quota-language body match, and retries with the `_BACKUP` key automatically. Every engine wrapper calls it. This one you can trust unconditionally.
+- **The Exa gate is code plus protocol.** Code: `exa_doctor.sh` exits non-zero unless Exa answers live; every exa-search script classifies failures into `EXA_FATAL` (exit 3) / `EXA_ERROR` (exit 1) from Exa's own error tags and logs them to `api-failures.jsonl`; `check-failures` exits 3 when an Exa fatal was logged. Protocol: actually stopping and asking the user is the orchestrating agent's job. The exit codes make skipping it visible, not impossible.
+- **Backup-key fallover is real code.** `scripts/engines/engine_common.sh` (`dr_run_with_fallover`) tries the primary key, detects 401/402/403/429/5xx or a quota-language body match, and retries with the `_BACKUP` key automatically. Every engine wrapper calls it. This one you can trust unconditionally. (Exa is deliberately excluded: no fallover.)
 - **Round-2 anti-overlap is a protocol the orchestrating agent runs**, not a script. `references/routing.md` specifies the exact prompt injection, but nothing outside the agent's own diligence carries the round-1 URL list forward. If a context-compacted or distracted turn skips it, round 2 just repeats round 1 — there's no guard against that today.
 - **Critical-path failure alerting has a real signal and a real gap.** Every failed engine call is logged to `~/.claude/deep-research-logs/api-failures.jsonl` by code (`dr_log_failure`). Whether that failure actually reaches the user as a degraded-output callout used to depend entirely on the orchestrating agent remembering to check. `scripts/dr_config.sh check-failures` closes most of that gap — run it before finalizing and treat a non-zero exit as a hard stop, not a suggestion.
 
@@ -355,9 +385,9 @@ If you're extending this skill: don't add a claim to the frontmatter description
 
 | Skill / MCP | Role | When |
 |-------|------|------|
-| exa-search | Semantic search backend | General + semantic queries |
+| exa-search | Mandatory semantic backbone + the Exa gate | Every run, every category |
 | firecrawl MCP | Fast hosted page extraction | Heavy extraction (preferred; credit-aware fallback to perplexity/chrome) |
-| perplexity-server MCP | $0 Perplexity + URL extraction | Multi-step, news synthesis, heavy extraction |
+| perplexity-server MCP | Free Perplexity + URL extraction | Multi-step, news synthesis, heavy extraction |
 | paper-search MCP | 21-source academic aggregator | Academic / peer-reviewed queries |
 | nano-banana-pro | Graph/chart generation | Team Wave 3, when data supports |
 | chrome-devtools MCP | Dynamic-site extraction | Fallback from perplexity-server extract |

@@ -69,10 +69,10 @@ Field meaning: `confirmed` = the user said yes to setting it up; `installed` = d
 
 ## The flow
 
-1. **Gate-check** (SKILL.md): read `configuration.json`. Missing -> first run. `complete`/`stop_asking` -> straight to research. Otherwise a one-line nudge.
+1. **Gate-check** (SKILL.md): the Exa gate runs first and blocks on a broken or missing Exa key; then read `configuration.json`. Missing -> first run. `complete`/`stop_asking` -> straight to research. Otherwise a one-line nudge.
 2. **Required baseline (the ~70%)**: present the minimum that makes general deep research effective - Exa + Firecrawl - framed as required, and walk the user through setting them up (perplexity-server + paper-search are already free + live). No quick/skip menu; just guide them through it.
 3. **The other 30% + categories**: pitch what else the tool can do, with concrete examples per category, then multi-select "which categories are you interested in?"
-4. **Per-category situational keys**: for each selected category, show its *additional* keys + signup URLs (Exa/Firecrawl already done). Install free skills/MCPs while the user fetches keys; write each key to `.env`, update config.
+4. **Per-category situational keys**: for each selected category, show its *additional* keys + signup URLs (Exa/Firecrawl already done). Install free skills/MCPs while the user fetches keys; write each key to `.env` (Exa: the global environment, via `set-key`), update config.
 5. **Completion**: set `onboarding.status`; offer a live `doctor` ping of configured keys.
 
 Always persist progress via `dr_config.sh` as you go, so a half-finished setup resumes cleanly next time.
@@ -113,7 +113,7 @@ Say something like:
 > 1. **Exa** (semantic search) - https://dashboard.exa.ai/api-keys
 > 2. **Firecrawl** (fast extraction) - https://www.firecrawl.dev/app/api-keys
 
-Walk them through one at a time: point to the URL, take the pasted key, `dr_config.sh set-key <NAME> <VALUE>`; for Firecrawl also `claude mcp add --transport http --scope user firecrawl https://mcp.firecrawl.dev/<KEY>/v2/mcp`. (Optional, keep it light: offer broader general-web breadth here too - Serper / Brave / Tavily / Linkup, all free tiers - but it's a nice-to-have, not required.) Then move to Step 2.
+Walk them through one at a time: point to the URL, take the pasted key, `dr_config.sh set-key <NAME> <VALUE>` (skip Exa if the Exa gate already passed this session; for `EXA_API_KEY`, set-key hands off to exa-search's `exa_set_key.sh`, which checks the key live, refuses a bad one, and saves it to the global environment rather than `.env`, because exa-search reads only the global env); for Firecrawl also `claude mcp add --transport http --scope user firecrawl https://mcp.firecrawl.dev/<KEY>/v2/mcp`. (Optional, keep it light: offer broader general-web breadth here too - Serper / Brave / Tavily / Linkup, all free tiers - but it's a nice-to-have, not required.) Then move to Step 2.
 
 ---
 
@@ -192,7 +192,7 @@ Essentials (Exa, Firecrawl) are already done in Step 1 - this is the *situationa
 | `OPENFDA_API_KEY` | openFDA (optional) | https://open.fda.gov/apis/authentication/ | keyless 1k/day -> 120k/day |
 | (gh auth) | GitHub | https://cli.github.com | free |
 
-Every paid/quota key also accepts a `<KEY>_BACKUP` variant for automatic fallover (Lusha is single-key, no backup).
+Every paid/quota key also accepts a `<KEY>_BACKUP` variant for automatic fallover (Lusha is single-key, no backup). Exa is the exception: one global key, no fallover, and a failing Exa key stops research until the user supplies a working one.
 
 ---
 

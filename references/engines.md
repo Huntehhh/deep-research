@@ -1,6 +1,6 @@
 # Engine Arsenal — wrappers, MCPs, and OpenRouter
 
-Every search backend the skill can call. Wrappers live in `scripts/engines/` and read keys from the environment (`<ENGINE>_API_KEY` + `_BACKUP`) via `engine_common.sh`. Exa stays in the sibling `exa-search` skill. The script is the source of truth for the exact endpoint; this table is for routing and operational limits.
+Every search backend the skill can call. Wrappers live in `scripts/engines/` and read keys from the environment (`<ENGINE>_API_KEY` + `_BACKUP`) via `engine_common.sh`. Exa stays in the sibling `exa-search` skill and is the exception: mandatory in every run, one global key, no `_BACKUP`, and its failures halt the run (SKILL.md, "Exa gate"). The script is the source of truth for the exact endpoint; this table is for routing and operational limits.
 
 ## Quick invoke
 
@@ -8,7 +8,7 @@ Every search backend the skill can call. Wrappers live in `scripts/engines/` and
 bash scripts/engines/<name>.sh "<args>"
 ```
 
-All wrappers print JSON (or clean text for gov APIs) to stdout. On failure they emit `DR_FAILURE: engine=... reason=...` to stderr and exit 1 — the body still prints so you can inspect the error.
+All wrappers print JSON (or clean text for gov APIs) to stdout. On failure they emit `DR_FAILURE: engine=... reason=...` to stderr and exit 1 — the body still prints so you can inspect the error. (The exa-search scripts emit `EXA_FATAL:` / `EXA_ERROR:` instead; see the failure contract in exa-search's SKILL.md.)
 
 ## General web (5)
 
@@ -19,7 +19,7 @@ All wrappers print JSON (or clean text for gov APIs) to stdout. On failure they 
 | `brave_llm_context.sh` | Pre-extracted LLM markdown chunks | `<query> [count]` | BRAVE_API_KEY (+_BACKUP) | same Brave credit pool |
 | `tavily_search.sh` | AI-cleaned, LangChain-native | `<query> [max_results] [depth]` (default basic) | TAVILY_API_KEY (+_BACKUP) | 1,000 credits/mo per key |
 | `linkup_search.sh` | Neural, instruction-aware, EU/GDPR | `<query> [depth]` (standard/deep) | LINKUP_API_KEY (+_BACKUP) | $20 balance per key (one-time) |
-| (exa) | Neural semantic | via `exa-search` skill | EXA_API_KEY | 1,000 credits/mo |
+| (exa, mandatory) | Neural semantic | via the `exa-search` scripts, never the claude.ai connector | EXA_API_KEY (global env only, no backup) | 1,000 credits/mo free tier |
 
 ## B2B / people / company (5)
 
@@ -51,7 +51,7 @@ PHI never crosses the wire — pass only anonymized clinical terms.
 | Heavy extraction (preferred) | `firecrawl` | firecrawl_scrape, firecrawl_extract | free tier ~1,000 pages/mo (remote MCP) |
 | Heavy extraction (last-resort fallback) | `chrome-devtools` | `navigate_page`, `take_snapshot`, `evaluate_script` | $0 |
 
-**Heavy-extraction order:** Firecrawl -> perplexity-server `extract_url_content` -> chrome-devtools.
+**Heavy-extraction order:** `exa_crawl.sh` -> Firecrawl -> perplexity-server `extract_url_content` -> chrome-devtools.
 
 ## OpenRouter deep-research models (fallback only)
 

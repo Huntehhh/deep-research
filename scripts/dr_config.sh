@@ -5,6 +5,19 @@
 set -euo pipefail
 export LC_ALL=C
 
+# --- jq bootstrap: same convention as engine_common.sh -----------------------
+# If jq isn't on PATH, honor DR_JQ_PATH (env, else ~/.claude/deep-research/.env)
+# so a non-standard install doesn't break `status` -- the skill's first step.
+if ! command -v jq >/dev/null 2>&1; then
+  __jqdir="${DR_JQ_PATH:-}"
+  __envf="${DR_HOME:-$HOME/.claude/deep-research}/.env"
+  if [ -z "$__jqdir" ] && [ -f "$__envf" ]; then
+    __jqdir="$(sed -n 's/^DR_JQ_PATH=//p' "$__envf" | tail -n1 | tr -d "\r\"'")" || __jqdir=""
+  fi
+  if [ -n "$__jqdir" ]; then export PATH="$__jqdir:$PATH"; fi
+  unset __jqdir __envf
+fi
+
 # --- guards ------------------------------------------------------------------
 if ! command -v jq >/dev/null 2>&1; then
   echo "dr_config: jq not found on PATH. Install it: https://jqlang.github.io/jq/download/" >&2
@@ -227,6 +240,17 @@ cmd_set_key() {
   [ "${2:-}" ] || die "usage: $0 set-key <NAME> <VALUE>"
   [ -f "$DR_CONFIG" ] || cmd_init >/dev/null
   local name="$1" value="$2"
+  # Exa is read from the global environment only (exa-search never reads this
+  # skill's .env), so EXA_API_KEY goes through exa-search's check-then-save.
+  if [ "$name" = "EXA_API_KEY" ]; then
+    local setter="$HOME/.claude/skills/exa-search/scripts/exa_set_key.sh" rc=0
+    [ -f "$setter" ] || die "exa-search skill not installed ($setter missing) -- install it first (references/onboarding.md)"
+    bash "$setter" "$value" || rc=$?
+    if [ "$rc" -ne 0 ]; then echo "dr_config: EXA_API_KEY not saved (see above)." >&2; exit "$rc"; fi
+    jq_update "(.components.apiKeys[\"EXA_API_KEY\"]) |= ((. // {}) + $(key_meta_json EXA_API_KEY) + {\"confirmed\": true, \"hasKey\": true, \"status\": \"present\", \"checkedAt\": \"$(now_iso)\"})"
+    echo "EXA_API_KEY saved to the global environment (not .env); marked present in $DR_CONFIG"
+    return 0
+  fi
   write_env_key "$name" "$value"
   # Ensure an apiKeys entry exists (seed from key_meta_json) then mark present.
   local meta
@@ -256,11 +280,31 @@ cmd_check_failures() {
     return 0
   fi
 
-  local critical_engines='["pdl","explorium","github_repo_people","theirstack","lusha","paper-search","pubmed","brave_search","perplexity-server","openrouter"]'
+  # Exa first (logged by exa-search's _exa_lib.sh as engine "exa"). A fatal means
+  # the run should already have stopped at the Exa gate: exit 3, not a callout.
+  local exa_fatal exa_err
+  exa_fatal="$(jq -c --arg since "$since" \
+    'select(.ts >= $since and .engine == "exa" and ((.reason // "") | tostring | startswith("fatal")))' \
+    "$logfile" 2>/dev/null)" || exa_fatal=""
+  if [ -n "$exa_fatal" ]; then
+    echo "check-failures: EXA KEY FAILURE since $since -- do not deliver results. Stop, show the user this error, and ask for a working Exa key (SKILL.md 'Exa gate')." >&2
+    printf '%s\n' "$exa_fatal" >&2
+    return 3
+  fi
+  exa_err="$(jq -c --arg since "$since" \
+    'select(.ts >= $since and .engine == "exa" and ((.reason // "") | tostring | startswith("error")))' \
+    "$logfile" 2>/dev/null)" || exa_err=""
+  if [ -n "$exa_err" ]; then
+    echo "check-failures: note -- transient Exa error(s) since $since. Each must have been retried once; if any retry also failed, the run should have stopped:" >&2
+    printf '%s\n' "$exa_err" >&2
+  fi
+
+  # Names as the wrappers actually log them (brave_search.sh logs "brave").
+  local critical_engines='["pdl","explorium","github","github_repo_people","theirstack","lusha","paper-search","pubmed","brave","brave_search","perplexity-server","openrouter"]'
   local hits
   hits="$(jq -c --arg since "$since" --argjson crit "$critical_engines" \
     'select(.ts >= $since) | select(.engine as $e | $crit | index($e) != null)' \
-    "$logfile" 2>/dev/null)"
+    "$logfile" 2>/dev/null)" || hits=""
 
   if [ -z "$hits" ]; then
     echo "check-failures: OK -- no critical-path engine failures since $since."
@@ -318,6 +362,8 @@ Usage:
   dr_config.sh set-key <NAME> <VALUE>
       Append/replace NAME=VALUE in ~/.claude/deep-research/.env (chmod 600).
       Marks hasKey=true, status="present" in configuration.json. Never stores the value.
+      EXA_API_KEY is different: it goes to the global environment via
+      exa-search's exa_set_key.sh, which checks it live first (never .env).
 
   dr_config.sh set <dotted.path> <value>
       Generic setter for onboarding.* fields (e.g. onboarding.status complete).
@@ -325,9 +371,10 @@ Usage:
   dr_config.sh check-failures [--since ISO8601]
       Read ~/.claude/deep-research-logs/api-failures.jsonl for critical-path
       engine failures since the given time (default: last 4 hours). Exit 0
-      and print OK if none found; exit 1 and print the hits otherwise. Run
-      this before finalizing output -- see SKILL.md "What's code-enforced
-      vs. protocol-enforced".
+      and print OK if none found; exit 1 and print the hits otherwise; exit 3
+      if an Exa key failure (EXA_FATAL) was logged -- stop and ask for a key.
+      Pass --since <the Exa gate's pass time>. Run this before finalizing
+      output -- see SKILL.md "What's code-enforced vs. protocol-enforced".
 
 State lives under ~/.claude/deep-research/. Override the location with DR_HOME.
 EOF

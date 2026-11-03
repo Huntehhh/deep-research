@@ -15,6 +15,8 @@ The orchestrator fills these variables before spawning:
 - `{{GAPS}}` — (Wave 2+) specific gaps identified by Wave 1 agents
 - `{{ALL_FILES}}` — (Wave 3) list of all files written by prior waves
 
+Every template carries the "EXA IS MANDATORY" rule (line 2 of its skill-usage block). Keep it when you adapt a template, and run the Exa gate (`exa_doctor.sh`) before spawning any of them.
+
 ---
 
 # MODE 1 — TECHNICAL
@@ -34,13 +36,14 @@ and any other quantitative data that lets people compare objectively.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Official benchmark pages, technical documentation, GitHub README perf sections
 2. Independent benchmark blogs (especially dev.to, Medium engineering posts, personal blogs)
 3. HN threads: site:news.ycombinator.com {{TOPIC}} benchmark performance
 4. Reddit: site:reddit.com "{{TOPIC}}" benchmark OR "how fast" OR "performance"
-5. Academic papers or technical reports via Exa with category:research_paper
+5. Academic papers or technical reports via exa_search.sh with category "research paper"
 6. GitHub issues/PRs where performance was measured or compared
 
 WHAT TO SEARCH FOR:
@@ -106,12 +109,13 @@ can't capture. Find real quotes, real stories, real emotions.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Reddit: r/programming, r/webdev, r/devops, r/[relevant subreddits] — real user threads
 2. HN: "Ask HN" threads and comments about the topic
 3. Dev.to and personal blogs: authentic experience posts ("I migrated from X to Y")
-4. Twitter/X: dev community discussions (via Exa with category:tweet)
+4. Twitter/X: dev community discussions (Exa retired its tweet category and x.com filters return nothing: use serper_search.sh with site:x.com plus a date range, or exa_search.sh over thread mirrors with includeDomains ["threadreaderapp.com","unrollnow.com"])
 5. GitHub: issues and discussions where users express frustration or praise
 6. IndieHackers and ProductHunt discussion threads
 7. Stack Overflow: accepted answers that mention real-world pain
@@ -192,6 +196,7 @@ Be rigorous — only include claims you can actually back up with sources.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Success stories: real companies using this in production successfully
@@ -274,6 +279,7 @@ you are ensuring intellectual honesty. Only include claims you can source.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Post-mortems and outage reports involving this technology
@@ -359,6 +365,7 @@ makes this the right or wrong choice? Find the "it depends" answer and make it c
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. "When to use {{TOPIC}}" — blog posts and Stack Overflow answers
@@ -437,6 +444,7 @@ performance tuning approaches, and the community-proven way to do things.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Official docs: quickstart, migration guides, best practices
@@ -524,6 +532,7 @@ re-cover territory already addressed.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH APPROACH:
 - Read the gap list carefully — understand what's missing and WHY it matters
@@ -677,9 +686,10 @@ attributable to them. Stick to verifiable facts, not speculation.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
-1. LinkedIn (search via Exa or Google) — primary professional record
+1. LinkedIn (exa_linkedin.sh, or Google) — primary professional record
 2. Personal website or portfolio
 3. Company pages and press releases mentioning the person
 4. CrunchBase, AngelList — startup/investment history
@@ -762,6 +772,7 @@ intellectual influences. What do they actually think? What are their core ideas?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Their blog or newsletter — deepest intellectual content
@@ -848,6 +859,7 @@ What's their network — and what does that network tell us about their position
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Co-founder, co-author, co-presenter histories
@@ -934,6 +946,7 @@ sources, and note where there are contested narratives.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. News archives: search for "[name] controversy", "[name] accused", "[name] lawsuit"
@@ -1023,6 +1036,7 @@ learned from them actually say?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Testimonial pages on their website (find and quote, but note it's curated)
@@ -1106,6 +1120,7 @@ beyond what they explicitly say?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Their longest/most personal writing — essays, books, Substack
@@ -1187,6 +1202,7 @@ is to research those exact gaps.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 OUTPUT FORMAT:
 Save to {{OUTPUT_DIR}}/person-gaps.md with this structure:
@@ -1305,6 +1321,7 @@ build vs buy. Your job is discovery, not evaluation.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. ProductHunt — recent launches in this space
@@ -1386,6 +1403,7 @@ community support, time-to-value. Be rigorous — only claim what you can source
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Companies using {{TOP_SOLUTION}} in production successfully
@@ -1450,6 +1468,7 @@ community health concerns. Make sure the team doesn't get blindsided.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Reddit/HN: "{{TOP_SOLUTION}} problems", "switched away from {{TOP_SOLUTION}}"
@@ -1520,6 +1539,7 @@ and the hidden costs that only show up after the honeymoon period.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Official pricing pages (current, not cached)
@@ -1595,6 +1615,7 @@ Is it vendor-controlled or truly community-owned? What's the bus factor?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. GitHub: stars trend, commit frequency, contributor count, open issues/PRs
@@ -1673,6 +1694,7 @@ and the ongoing maintenance burden? Be honest — don't undersell build complexi
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Blog posts from people who built this themselves ("we built our own X")
@@ -1762,6 +1784,7 @@ You are here to fill specific holes. Research only the listed gaps.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 OUTPUT FORMAT:
 Save to {{OUTPUT_DIR}}/bvb-gaps.md with the same gap-fill format:
@@ -1864,6 +1887,7 @@ and what's the community landscape for this audience?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Reddit: find relevant subreddits, their size and activity
@@ -1948,6 +1972,7 @@ complain about repeatedly, and what they desperately wish existed.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Reddit: "I hate", "I'm frustrated", "why is it so hard to", "does anyone else"
@@ -2031,6 +2056,7 @@ their community and content strategies?
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Google: "best [product/service/creator] for {{TOPIC}}"
@@ -2096,6 +2122,7 @@ been tested and what the community reveals about willingness to pay.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. IndieHackers: revenue reports from people selling to this audience
@@ -2177,6 +2204,7 @@ marketing speak.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Reddit posts and comments (raw, unfiltered audience language)
@@ -2261,6 +2289,7 @@ without fighting for attention.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 SEARCH SOURCE PRIORITIES (in order):
 1. Podcasts: search for top podcasts in this space (Spotify, Apple Podcasts, ListenNotes)
@@ -2344,6 +2373,7 @@ specific holes they left. Research only the listed gaps.
 
 MANDATORY SKILL USAGE:
 1. Scan your available_skills list. If a skill matches this task, READ its SKILL.md at the listed path and follow its documented pipeline exactly (use its built-in fallbacks before improvising). Never skip reading a matching skill file.
+2. EXA IS MANDATORY: run Exa through the exa-search scripts (bash ~/.claude/skills/exa-search/scripts/exa_search.sh, exa_deep_search.sh, exa_crawl.sh, exa_company.sh, exa_linkedin.sh, exa_code.sh), which read the global EXA_API_KEY. Never call mcp__claude_ai_Exa__* tools. If a script prints EXA_FATAL, stop at once and return "EXA_FAILURE:" plus the verbatim error. If it prints EXA_ERROR, fix the request or wait, retry once; if it fails again, stop and return the same way. Never cover for a broken Exa with other engines.
 
 OUTPUT FORMAT:
 Save to {{OUTPUT_DIR}}/audience-gaps.md:

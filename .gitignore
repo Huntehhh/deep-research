@@ -5,3 +5,7 @@ output/
 
 # Fetched at install time, never vendored — see _dependencies/INSTALL.md
 _dependencies/vendor/
+
+# Installed locally by the first-run setup, never committed (see _dependencies/INSTALL.md)
+_dependencies/MCPs/
+_dependencies/skills/

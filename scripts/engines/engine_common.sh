@@ -2,8 +2,8 @@
 # engine_common.sh -- shared helpers for deep-research engine wrappers.
 #
 # WINDOWS / CLAUDE BASH TOOL: always invoke scripts with forward-slash paths.
-#   CORRECT:  bash "C:/Users/huntfat/.claude/skills/deep-research/scripts/engines/serper_search.sh"
-#   WRONG:    bash "C:\Users\huntfat\.claude\skills\deep-research\scripts\engines\serper_search.sh"
+#   CORRECT:  bash "C:/Users/<you>/.claude/skills/deep-research/scripts/engines/serper_search.sh"
+#   WRONG:    bash "C:\Users\<you>\.claude\skills\deep-research\scripts\engines\serper_search.sh"
 # Backslashes in bash are escape chars (\U, \c, etc.) -- the path silently
 # resolves wrong and the script exits 127 ("command not found").
 #
@@ -62,10 +62,21 @@ dr_keyval() { eval "printf '%s' \"\${$1:-}\""; }
 # Usage: dr_should_fallover <status> <body>   ; returns 0 (true) to fail over.
 dr_should_fallover() {
   local status="${1:-0}" body="${2:-}"
+  local quota_re='rate.?limit|quota|exhaust|too many request|insufficient|forbidden'
   case "$status" in
     401|402|403|429|500|502|503|504) return 0;;
   esac
-  printf '%s' "$body" | grep -Eiq 'rate.?limit|quota|exhaust|too many request|insufficient|forbidden' && return 0
+  # A 2xx body is search RESULTS: a snippet that merely mentions "rate limit"
+  # must not burn the backup key (it did, 16 times on 2026-11-03, logging false
+  # "both keys failed (status 200)"). On 2xx only an error-shaped body counts.
+  case "$status" in
+    2??)
+      command -v jq >/dev/null 2>&1 || return 1
+      printf '%s' "$body" | jq -r '(.error // .message // .detail // .errors // empty) | tostring' 2>/dev/null \
+        | grep -Eiq "$quota_re" && return 0
+      return 1 ;;
+  esac
+  printf '%s' "$body" | grep -Eiq "$quota_re" && return 0
   return 1
 }
 

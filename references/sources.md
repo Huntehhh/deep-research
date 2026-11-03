@@ -7,12 +7,12 @@ Write queries conversationally—Exa uses semantic understanding:
 - "honest review of [product] from someone who used it"
 - "problems with [tool] that users complain about"
 
-**Exa tools:**
-- `web_search_exa` — general queries, use `type: "auto"`
-- `deep_search_exa` — research tasks, returns rich context
-- `get_code_context_exa` — code/repo queries
+**Exa scripts** (`~/.claude/skills/exa-search/scripts/`; never the `mcp__claude_ai_Exa__*` connector tools):
+- `exa_search.sh` — general queries, `type` auto
+- `exa_deep_search.sh` — research tasks, returns a synthesized `.output` plus rich context
+- `exa_code.sh` — code/repo queries
 
-**Categories:** `company`, `research paper`, `news`, `pdf`, `github`, `tweet`, `personal site`, `financial report`, `people`
+**Categories:** `company`, `research paper`, `news`, `pdf`, `github`, `personal site`, `financial report`, `people` (`tweet` is retired: Exa returns 400, and `x.com` domain filters return nothing. For X posts use `serper_search.sh` with `site:x.com` plus a date range, or Exa over thread mirrors via `includeDomains: ["threadreaderapp.com","unrollnow.com"]`.)
 
 **Filters:** `includeDomains`, `excludeDomains`, `startPublishedDate`, `category`
 
