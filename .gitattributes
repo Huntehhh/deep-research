@@ -1,0 +1,2 @@
+# Bash scripts break on CRLF; keep every text file LF on every OS.
+* text=auto eol=lf
