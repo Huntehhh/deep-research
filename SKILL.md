@@ -47,14 +47,16 @@ Before searching, classify the query, then fire **Exa plus that category's engin
 | Query shape | Category | Exa's job (every run) | Category engines (full order -> routing.md) |
 |---|---|---|---|
 | generic web / "what is" / "look this up" | **General** | `exa_search.sh` (+ `exa_deep_search.sh` for depth) | `serper_search.sh` -> brave -> linkup / tavily |
-| "find the team behind" / "look up [person/company]" / enrich | **B2B** | `exa_company.sh`, `exa_linkedin.sh` | `pdl_lookup.sh` (+ github/theirstack/explorium) |
-| clinical / peptide / drug / biomarker / lab / protocol | **Clinical** | `exa_search.sh` category `research paper` (anonymized term only) | `pubmed_search.sh` (+ clinicaltrials/openfda/rxnorm) |
+| "find the team behind" / "look up [person/company]" / enrich | **B2B** | `exa_company.sh`, `exa_linkedin.sh`; `exa_agent.sh --sources fiber,similarweb,baselayer` for premium firmographics, traffic, KYB | `pdl_lookup.sh` (+ github/theirstack/explorium) |
+| clinical / peptide / drug / biomarker / lab / protocol | **Clinical** | `exa_search.sh` category `publication` (anonymized term only) | `pubmed_search.sh` (+ clinicaltrials/openfda/rxnorm) |
 | a specific person's labs / symptoms / case (HIPAA-adjacent) | **Privacy** | `exa_search.sh`, anonymized terms only | `brave_search.sh`; no other logged engine |
 | "latest" / "today" / "breaking" | **News** | `exa_search.sh` category `news` + `startPublishedDate` | `serper_search.sh` (qdr:d) -> brave -> perplexity-server |
-| "research this" / "compile a brief" / "synthesize" | **Multi-Step** | `exa_deep_search.sh`, two-phase | perplexity-server MCP (OpenRouter `perplexity/*` fallback only) |
-| "find papers on" / "peer-reviewed" / "meta-analysis" | **Academic** | `exa_search.sh` category `research paper` | paper-search MCP (21 sources) |
+| "research this" / "compile a brief" / "synthesize" | **Multi-Step** | `exa_deep_search.sh`, two-phase, for an answer in seconds; `exa_agent.sh --effort medium` (`high` when stakes are high) to research it properly | perplexity-server MCP (OpenRouter `perplexity/*` fallback only) |
+| "find all" / "list every" / "enrich these rows" | **Lists** | `exa_agent.sh --effort auto` + bounded `--schema`; rows via `--input` (ultra asks first) | pdl / theirstack / explorium for B2B fields |
+| "find papers on" / "peer-reviewed" / "meta-analysis" | **Academic** | `exa_search.sh` category `publication` (350M papers) | paper-search MCP (21 sources) |
 | "scrape" / "extract URL content" | **Heavy Extraction** | `exa_crawl.sh` first | Firecrawl MCP (-> perplexity extract -> chrome-devtools; credit-aware) |
-| "find phone for [person]" / "direct dial" | **Phone** | `exa_linkedin.sh` to pin down who they are | `lusha_phone.sh` ONLY (router-gated) |
+| "find phone / email for [person]" / "direct dial" | **Contacts** | `exa_linkedin.sh` to pin down *who* they are, never their contact data | `lusha_phone.sh`, then `pdl_lookup.sh` only if Lusha fails (contacts never come from Exa) |
+| "watch" / "monitor" / "alert me when" | **Monitoring** | exa-search **Monitors mode** (`references/monitors-mode.md` there): set up once, Exa runs it | — |
 
 Wrappers: `bash scripts/engines/<name>.sh "<args>"` (keys read from env, primary->backup fallover automatic). Exa: the exa-search scripts, one global key, no fallover. Full catalog: [references/engines.md](references/engines.md). Full routing/multi-round/alerting rules: [references/routing.md](references/routing.md).
 
@@ -144,7 +146,9 @@ Execute in order, adapting to query type:
 1. **Exa semantic** (2-4 queries) — conversational queries like "developers who switched from X to Y and why", through the exa-search scripts (never the `mcp__claude_ai_Exa__*` tools)
    - `exa_deep_search.sh` for research tasks
    - `exa_code.sh` for code/repos
-   - `exa_search.sh "<query>" 8 auto "<category>"` when the content type is known: `company`, `people`, `research paper`, `news`, `pdf`, `github`, `personal site`, `financial report` (`tweet` is retired; Exa returns 400)
+   - `exa_search.sh "<query>" 8 auto "<category>"` when the content type is known: `company`, `people`, `publication`, `news`, `personal site`, `financial report` (`research paper` became `publication`; `pdf`/`github` are being deprecated; `tweet` is gone)
+   - Set `EXA_OBJECTIVE="<what this research needs>"` so Exa ranks for the task, not just the query
+   - `lite` instead of `auto` when one step fires 10+ searches (near-identical answers, half the latency)
 
 2. **Targeted web_search** (3-5 queries) — site-specific patterns
    - See `references/sources.md` for query patterns by category
@@ -268,8 +272,10 @@ EXA (mandatory, every agent):
 - Never switch to other engines to cover for a broken Exa.
 
 DATA SOURCE ESCALATION (use the engine arsenal — see references/engines.md):
-- Route by intent first, Exa always included: General -> exa + serper/brave/linkup/tavily; B2B -> exa_company/exa_linkedin + pdl/github/theirstack/explorium; clinical -> exa (research paper, anonymized terms) + pubmed/clinicaltrials/openfda/rxnorm; privacy-sensitive (a specific person's case) -> exa (anonymized terms) + brave_search only; academic -> exa (research paper) + paper-search MCP
-- Synthesized multi-step answer: exa_deep_search.sh + perplexity-server MCP (then OpenRouter perplexity/* fallback)
+- Route by intent first, Exa always included: General -> exa + serper/brave/linkup/tavily; B2B -> exa_company/exa_linkedin + pdl/github/theirstack/explorium; clinical -> exa (category publication, anonymized terms) + pubmed/clinicaltrials/openfda/rxnorm; privacy-sensitive (a specific person's case) -> exa (anonymized terms) + brave_search only; academic -> exa (category publication) + paper-search MCP
+- Contacts (emails, phones): lusha_phone.sh, then pdl_lookup.sh only if Lusha fails. Never ask Exa for contact data; its scripts refuse (EXA_POLICY)
+- Synthesized multi-step answer: exa_deep_search.sh + perplexity-server MCP (then OpenRouter perplexity/* fallback); multi-hop or per-claim verification: exa_agent.sh --effort medium
+- A script printing EXA_CONFIRM (exit 4) wants the user's OK for spend over $5: stop and return "EXA_CONFIRM:" plus the line, so the parent asks
 - Paywalled / JS-rendered URL: exa_crawl.sh -> Firecrawl MCP -> perplexity-server extract_url_content -> chrome-devtools MCP
 - If bot detection persists: consider a stealth browser tool, if you have one
 - Always try the lightest engine in the category first; the wrappers handle backup-key fallover (Exa has none: its failures stop you)

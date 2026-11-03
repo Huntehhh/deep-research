@@ -21,12 +21,14 @@ Classify the query, then call that category's engine set. When intent is ambiguo
 | Query shape (trigger) | Category | Engines (in call order) |
 |---|---|---|
 | "look this up" / "what is" / generic web | **General** | **exa_search** (always) + serper -> brave_search -> linkup -> tavily / brave_llm_context for cleaned chunks |
-| "find the team behind" / "who's at company X" / "look up [person]" / "enrich" | **B2B** | **exa_company / exa_linkedin** (always) + pdl_lookup, github_repo_people (repos), theirstack_jobs (hiring signal), explorium_enrich (company); see Lusha rule for phone |
-| clinical / medical / peptide / lab / biomarker / drug / protocol | **Clinical** | **exa_search category `research paper`** (always; anonymized term only) + pubmed_search + clinicaltrials_search + openfda_drug + rxnorm_lookup; brave_search (ZDR-eligible) for general web. PHI never leaves the boundary (below) |
+| "find the team behind" / "who's at company X" / "look up [person]" / "enrich" | **B2B** | **exa_company / exa_linkedin** (always; `exa_agent.sh --sources fiber,similarweb,baselayer` for premium firmographics, traffic, KYB) + pdl_lookup, github_repo_people (repos), theirstack_jobs (hiring signal), explorium_enrich (company); contacts per the contact chain below |
+| "find all" / "list every" / "enrich these rows" | **Lists** | **exa_agent.sh --effort auto** + a bounded `--schema`, rows via `--input` (ultra and budgets over $5 ask the user first) + pdl / theirstack / explorium for B2B fields |
+| clinical / medical / peptide / lab / biomarker / drug / protocol | **Clinical** | **exa_search category `publication`** (always; anonymized term only) + pubmed_search + clinicaltrials_search + openfda_drug + rxnorm_lookup; brave_search (ZDR-eligible) for general web. PHI never leaves the boundary (below) |
 | a specific person's labs / symptoms / case (HIPAA-adjacent) | **Privacy** | **exa_search** (always; anonymized terms only, accepted even though a standard Exa key has no zero data retention) + brave_search (ZDR-eligible). No other logged engine (serper / tavily / linkup) |
 | "latest" / "today" / "recent" / "breaking" | **News/Freshness** | **exa_search category `news` + `startPublishedDate`** (always) + serper (tbs qdr:d) -> brave_search -> perplexity-server MCP for synthesized answer |
-| "research this topic" / "compile a brief" / "synthesize evidence" / "deep dive" | **Multi-Step/Agentic** | **exa_deep_search, two-phase** (always) + perplexity-server MCP; OpenRouter `perplexity/sonar-deep-research` or `openai/o4-mini-deep-research` only if the MCP can't |
-| "find papers on" / "peer-reviewed" / "meta-analysis" / "study" | **Academic** | **exa_search category `research paper`** (always) + paper-search MCP (21 sources); pubmed_search direct as fallback |
+| "research this topic" / "compile a brief" / "synthesize evidence" / "deep dive" | **Multi-Step/Agentic** | **exa_deep_search, two-phase** (always) for an answer in seconds; **exa_agent.sh --effort medium** (high/xhigh when stakes are high) when it needs multi-hop research or per-claim verification + perplexity-server MCP; OpenRouter `perplexity/sonar-deep-research` or `openai/o4-mini-deep-research` only if the MCP can't |
+| "find papers on" / "peer-reviewed" / "meta-analysis" / "study" | **Academic** | **exa_search category `publication`** (always; 350M papers) + paper-search MCP (21 sources); pubmed_search direct as fallback |
+| "watch" / "monitor" / "alert me when" | **Monitoring** | exa-search **Monitors mode**: a short Q&A, then a monitor Exa runs on its own schedule |
 | "scrape" / "extract page content from URL" | **Heavy Extraction** | **exa_crawl** (always first) -> Firecrawl MCP -> perplexity-server `extract_url_content` -> chrome-devtools MCP -> escalate (see [Heavy extraction & credit-aware escalation](#heavy-extraction--credit-aware-escalation)) |
 
 **Wrapper location:** `scripts/engines/<engine>.sh` under this skill. Invoke with `bash scripts/engines/<name>.sh "<args>"`. Exa stays in the separate `exa-search` skill (`bash ~/.claude/skills/exa-search/scripts/exa_search.sh` and siblings). Never the claude.ai Exa connector (`mcp__claude_ai_Exa__*`).
@@ -93,6 +95,15 @@ Honor the answer (the user may also propose a different tool). Push past a block
 ## Lusha special-case routing
 
 `lusha_phone.sh` is called ONLY when the intent is "find phone for [name]" / "direct dial for [person]". It is phone-lookup only (5 credits/phone, 40 credits/mo free, single key, no backup). Never use Lusha for bulk B2B — that routes to pdl/explorium/theirstack/github. Run `exa_linkedin.sh` first to pin down which person you mean (Exa runs in every lane).
+
+### The contact chain (phones and emails)
+
+Contact lookups use the existing tools, no more and no less, each tried only if the one before fails or comes back empty:
+
+1. **`lusha_phone.sh <first> <last> <company>`**: phone numbers
+2. **`pdl_lookup.sh enrich profile=<linkedin-or-github-url>`** (or `email=`, `name=` + `company=`): whatever contact fields the PDL plan returns
+
+Exa never looks up contacts. Agent contact enrichment ($0.02/email, $0.07/phone) is off by design, and every exa-search script refuses an email or phone request with `EXA_POLICY` (exit 5). Both tools down → say so with the degraded-output callout ("Phone lookup unavailable"); don't route around it.
 
 ---
 

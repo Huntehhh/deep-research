@@ -43,7 +43,7 @@ SEARCH SOURCE PRIORITIES (in order):
 2. Independent benchmark blogs (especially dev.to, Medium engineering posts, personal blogs)
 3. HN threads: site:news.ycombinator.com {{TOPIC}} benchmark performance
 4. Reddit: site:reddit.com "{{TOPIC}}" benchmark OR "how fast" OR "performance"
-5. Academic papers or technical reports via exa_search.sh with category "research paper"
+5. Academic papers or technical reports via exa_search.sh with category "publication"
 6. GitHub issues/PRs where performance was measured or compared
 
 WHAT TO SEARCH FOR:

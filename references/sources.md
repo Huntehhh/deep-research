@@ -12,7 +12,7 @@ Write queries conversationally—Exa uses semantic understanding:
 - `exa_deep_search.sh` — research tasks, returns a synthesized `.output` plus rich context
 - `exa_code.sh` — code/repo queries
 
-**Categories:** `company`, `research paper`, `news`, `pdf`, `github`, `personal site`, `financial report`, `people` (`tweet` is retired: Exa returns 400, and `x.com` domain filters return nothing. For X posts use `serper_search.sh` with `site:x.com` plus a date range, or Exa over thread mirrors via `includeDomains: ["threadreaderapp.com","unrollnow.com"]`.)
+**Categories:** `company`, `people`, `publication` (replaced `research paper`), `news`, `personal site`, `financial report`. `pdf` and `github` are being deprecated: use `includeDomains` instead (`tweet` is retired: Exa returns 400, and `x.com` domain filters return nothing. For X posts use `serper_search.sh` with `site:x.com` plus a date range, or Exa over thread mirrors via `includeDomains: ["threadreaderapp.com","unrollnow.com"]`.)
 
 **Filters:** `includeDomains`, `excludeDomains`, `startPublishedDate`, `category`
 
