@@ -26,6 +26,9 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "  Windows: winget install jqlang.jq  (or choco install jq)" >&2
   exit 127
 fi
+# jq.exe on Windows ends its lines with CRLF. A stray \r inside a key name once
+# made `check` write a duplicate of every apiKeys entry, so strip it everywhere.
+jq() { command jq "$@" | tr -d '\r'; }
 
 # --- paths -------------------------------------------------------------------
 DR_HOME="${DR_HOME:-$HOME/.claude/deep-research}"
@@ -145,13 +148,28 @@ skill_installed() {
   if [ -d "$HOME/.claude/skills/$name" ]; then echo "true"; else echo "false"; fi
 }
 
+# The `claude mcp list` output, fetched once per run (it health-checks every
+# server, so it's slow). Finds the native installer's ~/.local/bin/claude.exe
+# when `claude` isn't on PATH. Empty when no CLI is found.
+MCP_LIST_CACHE=""
+MCP_LIST_DONE=0
+mcp_list() {
+  local bin=""
+  if [ "$MCP_LIST_DONE" = 0 ]; then
+    MCP_LIST_DONE=1
+    bin="$(command -v claude 2>/dev/null)" || bin=""
+    if [ -z "$bin" ] && [ -x "$HOME/.local/bin/claude.exe" ]; then bin="$HOME/.local/bin/claude.exe"; fi
+    if [ -n "$bin" ]; then MCP_LIST_CACHE="$("$bin" mcp list 2>/dev/null | tr -d '\r' || true)"; fi
+  fi
+  printf '%s\n' "$MCP_LIST_CACHE"
+}
+
 # Parse `claude mcp list` output for MCP NAME. Returns "installed" or "missing".
 # `claude mcp list` lines look like "name: command ..." or a table; we do a
 # substring match on the start of a line to stay tolerant.
 mcp_installed() {
   local name="$1" out
-  if ! command -v claude >/dev/null 2>&1; then echo "missing"; return; fi
-  out="$(claude mcp list 2>/dev/null || true)"
+  out="$(mcp_list)"
   if printf '%s\n' "$out" | grep -Eiq "^[[:space:]]*${name}[[:space:]:]" ; then
     echo "installed"
   else
@@ -184,7 +202,9 @@ cmd_check() {
     fi
   done
 
-  # 2. MCPs: parse `claude mcp list`
+  # 2. MCPs: parse `claude mcp list` (fetched once here, in this shell, so the
+  #    per-MCP lookups below reuse it instead of re-running the slow CLI)
+  mcp_list >/dev/null
   for m in firecrawl perplexity-server paper-search chrome-devtools; do
     if [ "$(mcp_installed "$m")" = "installed" ]; then
       jq_update ".components.mcps[\"$m\"].installed = true | .components.mcps[\"$m\"].status = \"present\" | .components.mcps[\"$m\"].checkedAt = \"$ts\""
@@ -257,6 +277,26 @@ cmd_set_key() {
   meta="$(key_meta_json "$name")"
   jq_update "(.components.apiKeys[\"$name\"]) |= ((. // {}) + $meta + {\"confirmed\": true, \"hasKey\": true, \"status\": \"present\", \"checkedAt\": \"$(now_iso)\"})"
   echo "wrote $name to $DR_ENV (chmod 600); marked present in $DR_CONFIG"
+}
+
+# Record which known keys already exist in the OS environment (or .env), so a
+# machine whose keys were set up elsewhere can finish onboarding without
+# re-pasting anything. Names only: no value is read into the config.
+cmd_detect_keys() {
+  [ -f "$DR_CONFIG" ] || cmd_init >/dev/null
+  local name found="" missing=""
+  for name in EXA_API_KEY FIRECRAWL_API_KEY SERPER_API_KEY BRAVE_API_KEY TAVILY_API_KEY LINKUP_API_KEY \
+              OPENROUTER_API_KEY PDL_API_KEY THEIRSTACK_API_KEY EXPLORIUM_API_KEY LUSHA_API_KEY \
+              NCBI_API_KEY OPENFDA_API_KEY PAPER_SEARCH_MCP_UNPAYWALL_EMAIL; do
+    if [ "$(key_has_value "$name")" = present ]; then
+      jq_update "(.components.apiKeys[\"$name\"]) |= ((. // {}) + $(key_meta_json "$name") + {\"confirmed\": true, \"hasKey\": true, \"status\": \"present\", \"checkedAt\": \"$(now_iso)\"})"
+      found="$found $name"
+    else
+      missing="$missing $name"
+    fi
+  done
+  echo "present:${found:- none}"
+  echo "missing:${missing:- none}"
 }
 
 cmd_check_failures() {
@@ -339,6 +379,7 @@ case "$sub" in
   check)              cmd_check "$@" ;;
   select-categories)  cmd_select_categories "$@" ;;
   set-key)            cmd_set_key "$@" ;;
+  detect-keys)        cmd_detect_keys "$@" ;;
   set)                cmd_set "$@" ;;
   check-failures)     cmd_check_failures "$@" ;;
   ''|-h|--help|help)
@@ -364,6 +405,10 @@ Usage:
       Marks hasKey=true, status="present" in configuration.json. Never stores the value.
       EXA_API_KEY is different: it goes to the global environment via
       exa-search's exa_set_key.sh, which checks it live first (never .env).
+
+  dr_config.sh detect-keys
+      Mark every known key already present in the OS environment (or .env)
+      as present in configuration.json. Names only; values are never read in.
 
   dr_config.sh set <dotted.path> <value>
       Generic setter for onboarding.* fields (e.g. onboarding.status complete).
