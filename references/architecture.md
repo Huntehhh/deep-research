@@ -1060,7 +1060,7 @@ MANDATORY: Use nano-banana-pro skill.
 
 ### 11.4 agent-teams Integration
 
-The orchestrator uses agent-teams patterns directly:
+Every Team-mode run reads `agent-teams/SKILL.md` first and follows it for coordination: plan format, confirmation, the Exa gate before launch, prompt construction, concurrency, progress tracking and the EXA_FAILURE stop. This document supplies the roles, waves and gap logic, and agent-teams' 1.5-2x scaling is skipped. Patterns:
 
 - **Wave 1** uses **Fan-out / Fan-in** pattern
 - **Wave 2** uses **Independent** pattern (gap agents don't depend on each other)

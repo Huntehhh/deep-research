@@ -196,6 +196,8 @@ See `references/output-format.md` for structure examples.
 
 When Team mode is selected (auto or by user), run the full 3-wave pipeline.
 
+**Coordinate through the `agent-teams` skill, by default.** Before presenting the plan, read `~/.claude/skills/agent-teams/SKILL.md` and use it for the coordination mechanics: the team-plan format and confirmation flow, the Exa gate before launch, building each agent's prompt (role, skill, task, boundaries, plus its verbatim Exa rule), concurrency, progress tracking, the `EXA_FAILURE` stop, and conflict resolution. This skill supplies *what* the team is: the templates below, the waves, gap scoring and the synthesis files. Skip agent-teams' 1.5-2x scaling proposal, because these templates are already sized. Its Fact-Checker and Synthesizer roles are built into the waves. Wave 1 is agent-teams' fan-out/fan-in pattern, Wave 2 its independent pattern, and Wave 3 its pipeline pattern.
+
 **Architecture doc:** `references/architecture.md` (detailed blueprint with pseudocode, gap detection logic, quality gates)
 **Agent templates:** `references/agent-templates.md` (32 detailed prompts for all 4 modes)
 
@@ -397,4 +399,4 @@ If you're extending this skill: don't add a claim to the frontmatter description
 | paper-search MCP | 21-source academic aggregator | Academic / peer-reviewed queries |
 | nano-banana-pro | Graph/chart generation | Team Wave 3, when data supports |
 | chrome-devtools MCP | Dynamic-site extraction | Fallback from perplexity-server extract |
-| agent-teams | Orchestration patterns | Reference for team coordination |
+| agent-teams | Team coordination: plan, confirm, gate, launch, track, stop | Every Team-mode run (read its SKILL.md first) |
